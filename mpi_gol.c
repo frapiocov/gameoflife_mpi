@@ -16,11 +16,68 @@
 #include <math.h>
 #include <time.h>
 
+/* rank processo master */
 #define MASTER 0
-/* DimensionI di default della matrice se non specificate */
+
+/* dimensioni di default della matrice se non specificate */
 #define DEF_ROWS 5
 #define DEF_COLS 5
 
+/* funzioni di utility */
+
+/* stampa una linea dopo ogni riga */ 
+int print_line(int cols)
+{
+    printf("\n");
+    for (int i = 0; i < cols; i++)
+    {
+        printf(" -----");
+    }
+    printf("\n");
+}
+
+/* mostra la matrice di input su stdout */
+void print_matrix(int current, int **mat, int rows, int cols)
+{
+    /* Generazione a cui appartiene la matrice*/
+    printf("\n Generation #%d:", current);
+    print_line();
+    for (int i = 0; i < rows; i++)
+    {
+        printf(":");
+        for (int j = 0; j < cols; j++)
+        {
+            printf("  %d  :", mat[i][j]);
+        }
+        print_line();
+    }
+}
+
+/* cambia il valore di una cella da morta a viva o viceversa 
+*  1 = cellula viva
+*  0 = cellula morta
+*/
+void change_state(int *cell)
+{
+    if(*cell == 1)
+        *cell = 0;
+    else
+        *cell = 1;    
+}
+
+/* controlla se una cella è viva */
+int is_alive(int cell)
+{
+    return cell == 1;
+}
+
+/* funzione che decide lo stato della cella per la generazione successiva */
+void get_state(int *send_mat, int *recv_mat, int index, int alive_count)
+{
+    if(is_alive())
+}
+
+/* funzione main */
 int main(int argc, char **argv)
 {
     int rank, num_proc; // P numero di processi
