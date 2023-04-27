@@ -7,19 +7,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <mpi.h>
 
 #define ALIVE 'O'
 #define DEAD '.'
 
-/* dimensione matrice di default*/
-#define DEF_ROWS 15
-#define DEF_COLS 42
-
 /* numero di generazioni/iterazioni da considerare di default */
 #define DEF_ITERATIONS 8
 
-int row_size = 0, col_size = 0;
+/* memorizzano i valori passati da stdin */
+int row_size = 0, 
+    col_size = 0,
+    iterations = 0;
+
 /* funzioni di utility */
 
 /* mostra su stdout la matrice */
@@ -45,6 +46,22 @@ void load_from_file(char *matrix, char *file) {
         }
     }
     fclose(fptr);
+}
+
+/* riempie la matrice in maniera casuale */
+void random_initialize(char *matrix) {
+    srand(time(NULL));
+
+    for (int i = 0; i < row_size; i++) {
+        for (int j = 0; j < col_size; j++) {
+            if(rand()%2 == 0){
+                matrix[i * col_size + j] = ALIVE;
+            } else {
+                matrix[i * col_size + j] = DEAD;
+            }
+            
+        }
+    }
 }
 
 /* setta il valore di righe e colonne in base al file pattern caricato */
@@ -136,8 +153,12 @@ int main(int argc, char *argv[])
     /* inizializzazione ambiente MPI */
     MPI_Init(&argc, &argv);
 
-    /* la matrice seed viene caricata da file se specificato il nome */ 
-    if (argc == 2) {
+    /* 
+    *  prima opzione di esecuzione 
+    *  la matrice seed viene caricata da file di cui viene specificato il nome 
+    *  secondo argomento è il numero di iterazioni da svolgere
+    */ 
+    if (argc == 3) {
         dir = "patterns/";
         filename = argv[1];
         ext = ".txt";
@@ -153,10 +174,29 @@ int main(int argc, char *argv[])
         copy = calloc(row_size * col_size, sizeof(char));
         /* riempie la matrice di partenza da file */
         load_from_file(matrix, file);
+        /* numero di iterazioni da fare */
+        iterations = atoi(argv[2]);
+    }
+    else if(argc == 4 ) {
+        /* secondo opzione di esecuzione: l'utente può inserire
+        *  numero di righe
+        *  numero di colonne
+        *  iterazioni da svolgere
+        *  la matrice viene riempita in maniera casuale
+        */
+        row_size = atoi(argv[1]);
+        col_size = atoi(argv[2]);
+        iterations = atoi(argv[3]);
+        /* allocazione delle matrici */
+        matrix = calloc(row_size *col_size, sizeof(char));
+        copy = calloc(row_size * col_size, sizeof(char));
+        /* riempie la matrice in modo casuale */
+        random_initialize(matrix);
     }
     else {
         printf("File not valid or bad number of arguments\n");
-        exit(1);
+        MPI_Finalize();
+        exit(0);
     }
 
     /* mostra su stdout la matrice seed */
@@ -167,7 +207,7 @@ int main(int argc, char *argv[])
     start = MPI_Wtime();
 
     /* ripete il processo per ITERATIONS volte */
-    for (int current = 0; current < DEF_ITERATIONS - 1; current++) {
+    for (int current = 0; current < iterations - 1; current++) {
         /* calcola la generazione successiva e mostra i risultati */
         if (current % 2 == 0) {
             life(matrix, copy);
@@ -186,7 +226,9 @@ int main(int argc, char *argv[])
     printf("Execution time: %f ms\n", end - start);
 
     /* libera la memoria dinamica allocata */
-    free(file);
+    if(argc == 3) {
+      free(file);  
+    }
     free(matrix);
     free(copy);
 
