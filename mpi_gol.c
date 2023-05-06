@@ -23,8 +23,8 @@
 #define TAG_PREV 41
 
 /* dimensioni di default della matrice se non specificate */
-#define DEF_ROWS 240
-#define DEF_COLS 160
+#define DEF_ROWS 24
+#define DEF_COLS 16
 #define DEF_ITERATION 6
 
 /* funzioni di utility */
@@ -172,17 +172,15 @@ int main(int argc, char **argv)
         end;
     int *rows_for_proc, /* memorizza il numero di righe da assegnare ad ogni processo */
         *displacement;  /* memorizza il displacement per ogni processo */
-    char *sub_matrix_proc,     /* buffer per l'invio della sotto matrice */
-        *matrix;        /* matrice di partenza */
-
-    char *result_buff,  /* buffer usato per memorizzare i risultati del gioco su un processore */
+    char *matrix;        /* matrice di partenza */
+    char *result_buff,  /* buffer usato per memorizzare i risultati su un processore */
         *recv_buff, /* per ricevere dallo scatter della matrice */
         *prev_row, /* riga precedente a quelle del processo corrente */
         *next_row; /* riga successiva a quelle del processo corrente */
 
     char *dir, *filename, *ext, *file; /* variabili per la lettura da file */
 
-    bool is_file = false;
+    bool is_file = false; /* indica che la matrice è stata riempita da file */
 
     MPI_Request send_request = MPI_REQUEST_NULL; /* Request per l'invio di dati */
     MPI_Request prev_request = MPI_REQUEST_NULL; /* Request per la ricezione dal processo precedente */
@@ -192,9 +190,9 @@ int main(int argc, char **argv)
 
     /* inizializzazione ambiente MPI */
     MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
-
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    
     if (argc == 3) { /* l'utente ha indicato un pattern da file */
         is_file = true;
         /* preparazione file */
@@ -204,7 +202,6 @@ int main(int argc, char **argv)
         file = malloc(strlen(dir) + strlen(filename) + strlen(ext) + 1);
         sprintf(file, "%s%s%s", dir, filename, ext);
         printf("--Generate matrix seed from %s--\n", file);
-
         /* 
         *  il processo master 
         *  imposta le dimensioni della matrice in base al file di input
@@ -214,7 +211,7 @@ int main(int argc, char **argv)
             check_matrix_size(file, &row_size, &col_size);
         } 
         
-        /* numero di iterazioni da fare */
+        /* numero di iterazioni/generazioni */
         iterations = atoi(argv[2]);
     }
     else if (argc == 4) { /* le dimensioni sono scelte dall'utente */
@@ -222,10 +219,14 @@ int main(int argc, char **argv)
         col_size = atoi(argv[2]);
         iterations = atoi(argv[3]);
     }
-    else { /* altrimenti esegue l'algoritmo con le configurazioni di default */
+    else if (argc == 1) { /* altrimenti esegue l'algoritmo con le configurazioni di default */
         row_size = DEF_ROWS;
         col_size = DEF_COLS;
         iterations = DEF_ITERATION;
+    } else { // numero di argomenti errato
+        printf("Error, check the number of arguments.\n");
+        MPI_Finalize();
+        return 0;
     }
 
     /* crea un nuovo tipo di dato MPI replicando MPI_CHAR col_size volte in posizioni contigue */
@@ -243,13 +244,13 @@ int main(int argc, char **argv)
     /* displacement da applicare ad ogni processo */
     displacement = calloc(num_proc, sizeof(int));
     /* base di partenza divisione */
-    int base = row_size / num_proc;
+    int base = (int)row_size / num_proc;
     /* righe in più da distribuire */
     int rest = row_size % num_proc;
     /* righe già assegnate */
     int assigned = 0;
 
-    /* calcolo delle righe in più per processo */
+    /* calcolo righe e displacement per ogni riga */
     for (int i = 0; i < num_proc; i++) {
         displacement[i] = assigned;
         /* nel caso di righe in più viene aggiunta al processo i */
@@ -274,15 +275,12 @@ int main(int argc, char **argv)
         /* inizializza la matrice con il file di input */
         if(is_file) {
             load_from_file(matrix, row_size, col_size, file);
-            printf("Seed matrix: \n");
             print_matrix(0, matrix, row_size, col_size);
-        }
-            
+        }   
     }
 
     /* ogni processo alloca la sua porzione di matrice */
-    sub_matrix_proc = calloc(rows_for_proc[rank] * col_size, sizeof(char));
-    
+    result_buff = calloc(rows_for_proc[rank] * col_size, sizeof(char));
     /* 
     *  se l'inizializzazione non è già avvenuta da file 
     *  ogni processo inizializza la sua porzione con valori casuali 
@@ -291,13 +289,12 @@ int main(int argc, char **argv)
         srand(time(NULL) + rank);
         for(int i = 0; i < rows_for_proc[rank] * col_size; i++) {
             if (rand() % 2 == 0) {
-                sub_matrix_proc[i] = ALIVE; 
+                result_buff[i] = ALIVE; 
             } else {
-                sub_matrix_proc[i] = DEAD;
+                result_buff[i] = DEAD;
             }
         }  
     }
-    
     
     /*
     sendbuf
@@ -319,7 +316,7 @@ int main(int argc, char **argv)
     */    
     /* raccoglie i dati da tutti i processi del communicator e li concatena nel buffer del processo master */
     /* MPI_Gatherv consente ai messaggi ricevuti di avere lunghezze diverse e di essere memorizzati in posizioni arbitrarie nel buffer del processo principale. */
-    MPI_Gatherv(sub_matrix_proc, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
+    MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 
     /* calcolo rank del processo successivo e precedente al corrente */
     prev = (rank - 1 + num_proc) % num_proc;
