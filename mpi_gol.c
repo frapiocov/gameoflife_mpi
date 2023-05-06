@@ -1,14 +1,11 @@
 /*
- *   Game of Life versione parallela con OpenMPI
+ *   Game of Life, versione parallela con OpenMPI
  *   Francesco Pio Covino
  *   PCPC 2022/2023
- *
- *   Specificare il numero di iterazioni come primo argomento (obbligatorio)
- *   + Numero di righe e colonne rispettivamente come secondo e terzo argomento
- *   se non specificati verranno utilizzate le dimensioni di default
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <mpi.h>
 #include <math.h>
@@ -156,7 +153,7 @@ void compute_next(char* origin_buff, char* next_row, char* result_buff, int row_
                     }
                 }
             /* esegue l'algoritmo sulla cella indicata */    
-            live(origin_buff, result_buff, (row_size - 1) * col_size + j, live_count);
+            life(origin_buff, result_buff, (row_size - 1) * col_size + j, live_count);
         }
 }
 
@@ -419,7 +416,7 @@ int main(int argc, char **argv)
             /* calcola i valori sulla riga successiva */
             compute_next(recv_buff, next_row, result_buff, sub_rows_size, col_size);
             /* attende il completamento della ricezione della riga precedente */ 
-            MPI_Wait(prev_request, MPI_STATUS_IGNORE);
+            MPI_Wait(&prev_request, MPI_STATUS_IGNORE);
             /* computa le celle della riga precedente */ 
             compute_prev(recv_buff, prev_row, result_buff, col_size);
         } 
@@ -427,7 +424,7 @@ int main(int argc, char **argv)
             /* calcola i valori sulla riga precedente */
             compute_prev(recv_buff, prev_row, result_buff, col_size);
             /* attende la riga successiva */
-            MPI_Wait(next_request, MPI_STATUS_IGNORE);
+            MPI_Wait(&next_request, MPI_STATUS_IGNORE);
             /* calcola i valori per la riga successiva */
             compute_next(recv_buff, next_row, result_buff, sub_rows_size, col_size);
         }
