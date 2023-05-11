@@ -1,7 +1,6 @@
 /*
- *   Game of Life, versione parallela con OpenMPI
- *   Francesco Pio Covino
- *   PCPC 2022/2023
+ * Game of Life, versione parallela con OpenMPI
+ * Francesco Pio Covino
  */
 
 #include <stdlib.h>
@@ -19,20 +18,25 @@
 #define ALIVE 'O'
 #define DEAD '.'
 
+/* tag per identificare invio e ricezione */
 #define TAG_NEXT 14
 #define TAG_PREV 41
 
-/* dimensioni di default della matrice se non specificate */
+/* dimensioni di default della matrice, se non specificate */
 #define DEF_ROWS 24
 #define DEF_COLS 16
 #define DEF_ITERATION 6
 
-/* funzioni di utility */
-
-/* mostra la matrice di input su stdout */
+/* 
+* @brief Mostra una matrice su stdout 
+* 
+* @param gen numero di generazione mostrata
+* @param matrice da mostrare
+* @param rows numero di righe della matrice
+* @param cols numero di colonne della matrice
+*/
 void print_matrix(int gen, char *mat, int rows, int cols)
 {
-    /* Generazione a cui appartiene la matrice*/
     printf("\nGeneration %d:\n", gen);
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -42,9 +46,17 @@ void print_matrix(int gen, char *mat, int rows, int cols)
     }
 }
 
-/* carica la matrice di partenza da file */
+/* 
+* @brief Inizializza una matrice da file
+* 
+* @param matrix matrice da riempire
+* @param rows numero di righe della matrice
+* @param cols numero di colonne della matrice
+* @param file file da cui prendere i dati
+*/
 void load_from_file(char *matrix, int rows, int cols, char *file) {
-    char c; /* carattere letto */
+    /* carattere letto */
+    char c; 
     FILE *fptr;
     fptr = fopen(file, "r");
     for (int i = 0; i < rows; i++) {
@@ -56,7 +68,13 @@ void load_from_file(char *matrix, int rows, int cols, char *file) {
     fclose(fptr);
 }
 
-/* setta il valore di righe e colonne in base al file pattern caricato */
+/* 
+* @brief Setta il valore di righe e colonne in base al file pattern caricato 
+* 
+* @param filename path del file scelto
+* @param row_size indirizzo variabile in cui memorizzare il numero di righe
+* @param col_size indirizzo var in cui memorizzare il numero di colonne
+*/
 void check_matrix_size(char *filename, int *row_size, int *col_size) {
     int rows = 0, lines = 0;
     char c;
@@ -86,12 +104,18 @@ void check_matrix_size(char *filename, int *row_size, int *col_size) {
     fclose(file);
 }
 
-/* funzione che decide lo stato della cella per la generazione successiva */
 /*
- *  controlla le 3 casistiche:
- *  una cellula viva con 2 o 3 vicini sopravvive per la prossima generazione
- *  se è morta e ha 3 vicini vivi torna in vita nella prossima generazione
- *  altrimenti in tutti i restanti casi muore
+ * @brief Decide lo stato della cella per la generazione successiva
+ *  
+ * Controlla le 3 casistiche:
+ * una cellula viva con 2 o 3 vicini sopravvive per la prossima generazione
+ * se è morta e ha 3 vicini vivi torna in vita nella prossima generazione
+ * altrimenti in tutti i restanti casi muore.
+ * 
+ * @param origin buffer con valori pre-computazione
+ * @param result buffer in cui memorizzare i valori post computazione
+ * @param index indice della cella target
+ * @param live_count vicini vivi nell'intorno della cella target
  */
 void life(char *origin, char *result, int index, int live_count) {
     if (origin[index] == ALIVE && (live_count == 2 || live_count == 3)) {
@@ -103,83 +127,98 @@ void life(char *origin, char *result, int index, int live_count) {
     }           
 }
 
-/* esegue la computazione utilizzando le celle della riga precedente a quelle date */
-void compute_prev(char* origin_buff, char* prev_row, char* result_buff, int col_size) {
+/*
+* @brief Esegue la computazione utilizzando le celle della riga precedente a quelle date
+* 
+* Viene calcolato prima il numero di vicini vivi nell'intorno della cella target
+* e successivamente deciso lo stato della cella per la generazione successiva.
+* Le operazioni sono eseguite per ogni cella.
+*
+* @param origin_buff buffer da cui prendere i dati
+* @param result_buff buffer su cui memorizzare i risultati
+* @param prev_row riga precedente a quelle processo
+* @param col_size numero di colonne della matrice
+*/
+void compute_prev(char* origin_buff, char* result_buff, char* prev_row,  int col_size) {
     for (int j = 0; j < col_size; j++) {
         /* memorizza i vicini vivi nell'intorno della cella */
         int live_count = 0;
+        /* basta controllare la riga precedente e le prime due assegnate al processo corrente */
         for (int row = -1; row < 2; row++) {
             for (int col = j - 1; col < j + 2; col++) {
-                /* se sto analizzando la cella corrente continuo */
+                /* se sto analizzando la cella target salto un giro */
                 if (row == 0 && col == j)
                     continue;
-
-                /* nel caso si ispeziona la riga precedente */
+                /* controlla la riga precedente */
                 if (row == -1) {
                     if (prev_row[col % col_size] == ALIVE)
                         live_count++;
-                }
-                else {
+                } else { /* altrimenti controlla nella sotto-matrice */
                     if (origin_buff[row * col_size + (col % col_size)] == ALIVE)
                         live_count++;
                 }
             }
         }
-        /* esegue l'algoritmo sulla cella indicata */
+        /* decide lo stato della cella nella posizione indicata */
         life(origin_buff, result_buff, j, live_count);
     }
 }
 
-/* esegue la computazione utilizzando le celle della riga successiva a quelle date */
-void compute_next(char* origin_buff, char* next_row, char* result_buff, int row_size, int col_size) {
+/*
+* @brief Esegue la computazione utilizzando le celle della riga successiva a quelle date
+* 
+* Viene calcolato prima il numero di vicini vivi nell'intorno della cella target
+* e successivamente deciso lo stato della cella per la generazione successiva.
+* Le operazioni sono eseguite per ogni cella.
+*
+* @param origin_buff buffer da cui prendere i dati
+* @param result_buff buffer in cui memorizzare i risultati della computazione
+* @param next_row riga successiva a quelle date
+* @param row_size numero di righe della matrice
+* @param col_size numero di colonne della matrice
+*/
+void compute_next(char* origin_buff, char* result_buff, char* next_row, int row_size, int col_size) {
     for (int j = 0; j < col_size; j++) {
         /* memorizza i vicini vivi nell'intorno della cella */
         int live_count = 0;
-
-        for (int row = row_size - 2; row < row_size + 1; row++)
+        for (int row = row_size - 2; row < row_size + 1; row++) {
             for (int col = j - 1; col < j + 2; col++) {
                 /* se sto analizzando la cella corrente continuo */
                 if (row == row_size - 1 && col == j)
                     continue;
-
-                    /* se voglio analizzare la riga successiva */
-                    if (row == row_size) {
-                        if (next_row[col % col_size] == ALIVE)
-                            live_count++;
-                    }
-                    else {
+                /* controlla la riga successiva o la matrice in base al caso */
+                if (row == row_size) {
+                    if (next_row[col % col_size] == ALIVE)
+                        live_count++;
+                } else {
                         if (origin_buff[row * col_size + (col % col_size)] == ALIVE)
                             live_count++;
-                    }
                 }
-            /* esegue l'algoritmo sulla cella indicata */    
-            life(origin_buff, result_buff, (row_size - 1) * col_size + j, live_count);
+            }
         }
+        /* decide lo stato della cella nella posizione indicata */    
+        life(origin_buff, result_buff, (row_size - 1) * col_size + j, live_count);
+    }
 }
 
-
-/* funzione main */
 int main(int argc, char **argv)
 {
-    int rank,       /* rank processo */
+    int rank,       /* rank processo corrente */
         num_proc,   /* size communicator */
         row_size,       /* righe matrice */
         col_size,       /* colonne matrice */
         iterations, /* numero di generazioni */
-        prev,       /* rank processo precedente al corrente */
-        next;       /* rank processo successivo al corrente */
-    double start,
-        end;
+        prev,       /* rank del processo precedente al corrente */
+        next;       /* rank del processo successivo al corrente */
+    double start, end; /* per la misurazione dei tempi */
     int *rows_for_proc, /* memorizza il numero di righe da assegnare ad ogni processo */
         *displacement;  /* memorizza il displacement per ogni processo */
-    char *matrix;        /* matrice di partenza */
-    char *result_buff,  /* buffer usato per memorizzare i risultati su un processore */
-        *recv_buff, /* per ricevere dallo scatter della matrice */
-        *prev_row, /* riga precedente a quelle del processo corrente */
-        *next_row; /* riga successiva a quelle del processo corrente */
-
+    char *matrix;        /* matrice di gioco */
+    char *result_buff,  /* buffer usato per memorizzare i risultati della computazione su un processore */
+        *recv_buff, /* buffer per ricevere righe dalla scatter */
+        *prev_row, /* riga o righe precedenti a quelle del processo corrente */
+        *next_row; /* riga o righe successive a quelle del processo corrente */
     char *dir, *filename, *ext, *file; /* variabili per la lettura da file */
-
     bool is_file = false; /* indica che la matrice è stata riempita da file */
 
     MPI_Request send_request = MPI_REQUEST_NULL; /* Request per l'invio di dati */
@@ -193,7 +232,9 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     
-    if (argc == 3) { /* l'utente ha indicato un pattern da file */
+    switch (argc)
+    {
+    case 3: /* l'utente ha indicato un pattern da file */
         is_file = true;
         /* preparazione file */
         dir = "patterns/";
@@ -202,94 +243,75 @@ int main(int argc, char **argv)
         file = malloc(strlen(dir) + strlen(filename) + strlen(ext) + 1);
         sprintf(file, "%s%s%s", dir, filename, ext);
         printf("--Generate matrix seed from %s--\n", file);
-        /* 
-        *  il processo master 
-        *  imposta le dimensioni della matrice in base al file di input
-        *  e ne riempie le celle
-        */
+        /* il processo master imposta le dimensioni della matrice in base al file di input */
         if(rank == MASTER) {
             check_matrix_size(file, &row_size, &col_size);
         } 
-        
-        /* numero di iterazioni/generazioni */
         iterations = atoi(argv[2]);
-    }
-    else if (argc == 4) { /* le dimensioni sono scelte dall'utente */
+        break;
+    case 4: /* le dimensioni sono scelte dall'utente */
         row_size = atoi(argv[1]);
         col_size = atoi(argv[2]);
         iterations = atoi(argv[3]);
-    }
-    else if (argc == 1) { /* altrimenti esegue l'algoritmo con le configurazioni di default */
+        break;
+    case 1: /* esegue l'algoritmo con le configurazioni di default */
         row_size = DEF_ROWS;
         col_size = DEF_COLS;
         iterations = DEF_ITERATION;
-    } else { // numero di argomenti errato
+        break;
+    default:
         printf("Error, check the number of arguments.\n");
         MPI_Finalize();
         return 0;
+        break;
     }
 
     /* crea un nuovo tipo di dato MPI replicando MPI_CHAR col_size volte in posizioni contigue */
     MPI_Type_contiguous(col_size, MPI_CHAR, &mat_row);
     MPI_Type_commit(&mat_row);
 
-    /*
-     *  divisione della matrice per righe
-     *  nel caso di divisione non equa, i primi resto processi
-     *  riceveranno una riga in più
-     */
-
-    /* righe per processo */
+    /* ogni cella k memorizza il numero di righe assegnate al processo k */
     rows_for_proc = calloc(num_proc, sizeof(int));
-    /* displacement da applicare ad ogni processo */
+    /* ogni cella k memorizza il displacement da applicare al processo k */
     displacement = calloc(num_proc, sizeof(int));
-    /* base di partenza divisione */
+    /* divisione delle righe */
     int base = (int)row_size / num_proc;
-    /* righe in più da distribuire */
     int rest = row_size % num_proc;
     /* righe già assegnate */
     int assigned = 0;
 
-    /* calcolo righe e displacement per ogni riga */
+    /* calcolo righe e displacement per ogni processo */
     for (int i = 0; i < num_proc; i++) {
         displacement[i] = assigned;
-        /* nel caso di righe in più viene aggiunta al processo i */
+        /* nel caso di resto presente, i primi resto processi ricevono una riga in più*/
         if (rest > 0) {
             rows_for_proc[i] = base + 1;
             rest--;
-        } 
-        else {
+        } else {
             rows_for_proc[i] = base;
         }
-        /* aggiorna il numero di righe già assegnate */
         assigned += rows_for_proc[i];
     }
 
-    /* processo master */
     if (rank == MASTER) {
         printf("Settings: iterations %d\trows %d\tcolumns %d\n", iterations, row_size, col_size);
-    
         start = MPI_Wtime();
-        /* alloca la matrice di partenza */
         matrix = calloc(row_size*col_size, sizeof(char));
-        /* inizializza la matrice con il file di input */
+        /* nel caso di file presente, solo master inizializza la matrice */
         if(is_file) {
             load_from_file(matrix, row_size, col_size, file);
             print_matrix(0, matrix, row_size, col_size);
         }   
     }
 
-    /* ogni processo alloca la sua porzione di matrice */
+    /* ogni processo alloca la sua porzione di righe */
     result_buff = calloc(rows_for_proc[rank] * col_size, sizeof(char));
-    /* 
-    *  se l'inizializzazione non è già avvenuta da file 
-    *  ogni processo inizializza la sua porzione con valori casuali 
-    */
+    /* se non è presente file, ogni processo inizializza la sua porzione con valori casuali */
     if(!is_file) {
         srand(time(NULL) + rank);
         for(int i = 0; i < rows_for_proc[rank] * col_size; i++) {
             if (rand() % 2 == 0) {
-                result_buff[i] = ALIVE; 
+                result_buff[i] = ALIVE;
             } else {
                 result_buff[i] = DEAD;
             }
@@ -318,21 +340,17 @@ int main(int argc, char **argv)
     /* MPI_Gatherv consente ai messaggi ricevuti di avere lunghezze diverse e di essere memorizzati in posizioni arbitrarie nel buffer del processo principale. */
     MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 
-    /* calcolo rank del processo successivo e precedente al corrente */
+    /* calcolo rank processo successivo e precedente al corrente (tenendo conto del toroide) */
     prev = (rank - 1 + num_proc) % num_proc;
     next = (rank + 1) % num_proc;
 
-    /* alloca i buffer per le operazioni di ricezione ed invio */
+    /* alloca i buffer per ricezione, invio e le relative righe */
     recv_buff = calloc(rows_for_proc[rank] * col_size, sizeof(char));
     result_buff = calloc(rows_for_proc[rank] * col_size, sizeof(char));
-    /* alloca lao spazio per la riga precedente e successiva alla sottomatrice del processo rank */
     prev_row = calloc(col_size, sizeof(char));
     next_row = calloc(col_size, sizeof(char));
 
-    /* il processo viene eseguito iterations volte */
     for(int it = 0; it < iterations; it++) {
-
-        /* la matrice divisa per righe, anche non equo, viene inviata ai sotto processi */
         /*
         sendbuf
             indirizzo send buffer
@@ -351,9 +369,8 @@ int main(int argc, char **argv)
         comm
             communicator (handle)
         */
+       /* la matrice inizializzata viene inviata, per righe, agli altri processi */
         MPI_Scatterv(matrix, rows_for_proc, displacement, mat_row, recv_buff, rows_for_proc[rank], mat_row, MASTER, MPI_COMM_WORLD);
-        
-        /* numero di righe assegnate al processo rank */
         int sub_rows_size = rows_for_proc[rank];
 
         /* invio e ricezione delle righe di bordo in modalità non bloccante*/
@@ -372,10 +389,7 @@ int main(int argc, char **argv)
         /* rank riceve la riga successiva dal suo predecessore */
         MPI_Irecv(next_row, 1, mat_row, next, TAG_NEXT, MPI_COMM_WORLD, &next_request);
 
-        /* 
-        *  calcola i valori delle celle che non interferiscono con gli altri processi
-        *  quindi escluse la prima e l'ultima riga
-         */
+        /* calcola i valori delle celle che non necessitano di aiuto da altri processi quindi escluse prima e ultima riga */
         for (int i = 1; i < sub_rows_size - 1; i++) {
             for (int j = 0; j < col_size; j++) {
 
@@ -386,18 +400,16 @@ int main(int argc, char **argv)
                         if (row == i && col == j) {
                             continue;
                         }
-                        /* aumenta il counter nel caso la cella sia viva */
                         if (recv_buff[row * col_size + (col % col_size)] == ALIVE) {
                             live_count++;
                         }       
                     }
                 }
-                /* esegue l'algoritmo sulla cella corrente */
+                /* decide lo stato della cella per la generazione successiva */
                 life(recv_buff, result_buff, i * col_size + j, live_count);
             }
         }
 
-        
         MPI_Request to_wait[] = {prev_request, next_request};
         int handle_index;
         /* attende il completamento delle comunicazioni */
@@ -408,25 +420,28 @@ int main(int argc, char **argv)
             &status
         );
 
-        /* nel caso la next_request viene completata prima */
+        /* nel caso la next_request venga completata prima */
         if(status.MPI_TAG == TAG_NEXT) {
-            /* calcola i valori sulla riga successiva */
-            compute_next(recv_buff, next_row, result_buff, sub_rows_size, col_size);
-            /* attende il completamento della ricezione della riga precedente */ 
+            /* 
+            calcola i valori con l'utilizzo della riga successiva,
+            attende il completamento della ricezione della riga precedente
+            e computa le celle con l'ausilio della riga precedente
+            */
+            compute_next(recv_buff, result_buff, next_row, sub_rows_size, col_size);
             MPI_Wait(&prev_request, MPI_STATUS_IGNORE);
-            /* computa le celle della riga precedente */ 
-            compute_prev(recv_buff, prev_row, result_buff, col_size);
-        } 
-        else { /* nel caso viene completata prima la prev_request */
-            /* calcola i valori sulla riga precedente */
-            compute_prev(recv_buff, prev_row, result_buff, col_size);
-            /* attende la riga successiva */
+            compute_prev(recv_buff, result_buff, prev_row,  col_size);
+        } else { /* nel caso viene completata prima la prev_request */
+            /* 
+            calcola i valori sulla riga precedente, 
+            attende la riga successiva
+            e calcola i valori usando la riga successiva
+            */
+            compute_prev(recv_buff, result_buff, prev_row, col_size);
             MPI_Wait(&next_request, MPI_STATUS_IGNORE);
-            /* calcola i valori per la riga successiva */
-            compute_next(recv_buff, next_row, result_buff, sub_rows_size, col_size);
+            compute_next(recv_buff, result_buff, next_row,  sub_rows_size, col_size);
         }
 
-        /* le righe appena calcolate vengono reinviate al master */
+        /* le righe appena calcolate vengono reinviate al master e memorizzate in matrix */
         MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 
         /* nel caso di file viene mostrata la matrice dopo ogni iterazione */
@@ -450,7 +465,6 @@ int main(int argc, char **argv)
         end = MPI_Wtime();
         printf("Execution Time: %f ms\n", end - start);
     }
-
     MPI_Finalize();
     return 0;
 }

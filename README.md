@@ -12,11 +12,14 @@ Implementazione del modello matematico *Game of life* (John Conway - 1970) con l
 ## Compilazione ed esecuzione 
 Sono presenti due versioni dell'algoritmo, una versione sequenziale ed una parallela, entrambe utilizzano OpenMPI. La versione sequenziale utilizza OpenMPI solo per far in modo che la misurazione dei tempi sia svolta nel medesimo modo.
 
-### 1. GoL Versione Sequenziale
+<details>
+  <summary><b>GoL versione sequenziale</b></summary>
+
 Per la compilazione eseguire il seguente comando da terminale:  
-```
+
+```c
 mpicc -o gol sequential_gol.c
-```  
+```
 Per l'esecuzione esistono due varianti:
 
 La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come viva conterrà il simbolo *O* mentre se indicata come morta conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
@@ -26,7 +29,7 @@ Pulsar pattern             |  Glidergun pattern
 ![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
 
 Oltre al nome del file va specificato il numero di iterazioni da eseguire:
-```
+```c
 mpirun -n 1 gol filename it
 // per esempio
 mpirun -n 1 gol pulsar 10
@@ -37,14 +40,19 @@ La seconda variante permette di eseguire l'algoritmo specificando 3 argomenti:
 - numero di iterazioni  
 
 N.B. La matrice di partenza verrà generata in maniera casuale.
-```
+```c
 mpirun -n 1 gol rows cols it
 // per esempio
 mpirun -n 1 gol 100 200 8
 ```  
+  
+</details>
 
-### 2. GoL Versione Parallela
+<details>
+    <summary><b>GoL versione parallela</b></summary>
+
 Per la compilazione eseguire il seguente comando da terminale:  
+
 ```
 mpicc -o execname programname.c
 // per esempio
@@ -82,13 +90,16 @@ mpirun -n N execname
 mpirun -5  mpigol
 ```  
 
-## 1. Soluzione proposta
+
+</details>
+
+## Soluzione proposta
 Game of life è un modello matematico creato da John Conway nel 1970.
 La seguente è un'implentazione in C con l'utilizzo di OpenMPI. La soluzione proposta si può sintetizzare nei seguenti punti:
 
 N.B. Nella spiegazione verrà preso in esame il caso in cui l'utente ha scelto la dimensione della matrice (NxM) e il numero di iterazioni.
 
-- I processi inizializzano in parallelo una matrice *NxM*. Ogni processo inizializza un insieme di righe, di default saranno *N/numero_di_processi* ma in caso di divisione non equa le righe aggiuntive vengono ridistribuite. Le righe inizializzate vengono poi inviate al processo MASTER attraverso l'uso della routine `MPI_Gatherv`.
+- I processi inizializzano in parallelo una matrice *NxM*. Ogni processo inizializza un insieme di righe, di default saranno *N/numero_di_processi* ma in caso di divisione non equa le righe in più vengono ridistribuite. Le righe inizializzate vengono poi inviate al processo MASTER attraverso l'uso della routine `MPI_Gatherv`.
 
 - La matrice inizializzata viene suddivisa in modo equo tra tutti i processi, MASTER compreso, attraverso la routine `MPI_Scatterv`.
 
@@ -103,11 +114,11 @@ N.B. Nella spiegazione verrà preso in esame il caso in cui l'utente ha scelto l
 
 - Le righe risultanti vengono inviate al MASTER attraverso l'uso della routine `MPI_Gatherv`.
 
-## 2. Struttura progetto
+## Struttura progetto
 sintesi codice sottolineando gli aspetti cruciali
 
-## 3. Analisi performance
+## Analisi performance
 in termini di scalabilità forte e debole
 
-## 4. Conclusioni
+## Conclusioni
 motivazioni performance ottenute
