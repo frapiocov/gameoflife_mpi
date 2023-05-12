@@ -90,7 +90,6 @@ mpirun -n N execname
 mpirun -5  mpigol
 ```  
 
-
 </details>
 
 ## Soluzione proposta

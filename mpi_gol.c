@@ -2,7 +2,6 @@
  * Game of Life, versione parallela con OpenMPI
  * Francesco Pio Covino
  */
-
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -78,13 +77,11 @@ void load_from_file(char *matrix, int rows, int cols, char *file) {
 void check_matrix_size(char *filename, int *row_size, int *col_size) {
     int rows = 0, lines = 0;
     char c;
-
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         printf("Error.\n");
         return;
     }
-
     /* conteggia righe e colonne del file */
     while ((c = fgetc(file)) != EOF) {
         if (c == '\n') {
@@ -125,6 +122,40 @@ void life(char *origin, char *result, int index, int live_count) {
     } else {
         result[index] = DEAD; 
     }           
+}
+
+/*
+* @brief Esegue la computazione utilizzando le celle della riga precedente a quelle date
+* 
+* Viene calcolato prima il numero di vicini vivi nell'intorno della cella target
+* e successivamente deciso lo stato della cella per la generazione successiva.
+* Le operazioni sono eseguite per ogni cella.
+*
+* @param origin_buff buffer da cui prendere i dati
+* @param result_buff buffer su cui memorizzare i risultati
+* @param prev_row riga precedente a quelle processo
+* @param col_size numero di colonne della matrice
+*/
+void compute(char* origin_buff, char* result_buff, int row_size,  int col_size) {
+    for (int i = 1; i < row_size - 1; i++) {
+            for (int j = 0; j < col_size; j++) {
+
+                /* memorizza i vicini vivi nell'intorno della cella target */
+                int live_count = 0;
+                for (int row = i - 1; row < i + 2; row++) {
+                    for (int col = j - 1; col < j + 2; col++) {
+                        if (row == i && col == j) {
+                            continue;
+                        }
+                        if (origin_buff[row * col_size + (col % col_size)] == ALIVE) {
+                            live_count++;
+                        }       
+                    }
+                }
+                /* decide lo stato della cella per la generazione successiva */
+                life(origin_buff, result_buff, i * col_size + j, live_count);
+            }
+        }
 }
 
 /*
@@ -235,18 +266,21 @@ int main(int argc, char **argv)
     switch (argc)
     {
     case 3: /* l'utente ha indicato un pattern da file */
-        is_file = true;
-        /* preparazione file */
-        dir = "patterns/";
-        filename = argv[1];
-        ext = ".txt";
-        file = malloc(strlen(dir) + strlen(filename) + strlen(ext) + 1);
-        sprintf(file, "%s%s%s", dir, filename, ext);
-        printf("--Generate matrix seed from %s--\n", file);
-        /* il processo master imposta le dimensioni della matrice in base al file di input */
-        if(rank == MASTER) {
+        if (rank == MASTER) {
+            is_file = true;
+            /* preparazione file */
+            dir = "patterns/";
+            filename = argv[1];
+            ext = ".txt";
+            file = malloc(strlen(dir) + strlen(filename) + strlen(ext) + 1);
+            sprintf(file, "%s%s%s", dir, filename, ext);
+            printf("--Generate matrix seed from %s--\n", file);
+            /* il processo master imposta le dimensioni della matrice in base al file di input */
             check_matrix_size(file, &row_size, &col_size);
-        } 
+        }
+        /* master invia la size della matrice a tutti i processi */
+        MPI_Bcast(&row_size, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
+        MPI_Bcast(&col_size, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
         iterations = atoi(argv[2]);
         break;
     case 4: /* le dimensioni sono scelte dall'utente */
@@ -293,15 +327,14 @@ int main(int argc, char **argv)
         assigned += rows_for_proc[i];
     }
 
-    if (rank == MASTER) {
-        printf("Settings: iterations %d\trows %d\tcolumns %d\n", iterations, row_size, col_size);
+    if(rank == MASTER) {    
         start = MPI_Wtime();
         matrix = calloc(row_size*col_size, sizeof(char));
         /* nel caso di file presente, solo master inizializza la matrice */
         if(is_file) {
             load_from_file(matrix, row_size, col_size, file);
-            print_matrix(0, matrix, row_size, col_size);
-        }   
+        }
+        printf("Settings: iterations %d\trows %d\tcolumns %d\n", iterations, row_size, col_size);
     }
 
     /* ogni processo alloca la sua porzione di righe */
@@ -317,28 +350,19 @@ int main(int argc, char **argv)
             }
         }  
     }
-    
-    /*
-    sendbuf
-        indirizzo iniziale del buffer di invio
-    sendcount
-        numero di elementi nel buffer di invio (intero)
-    sendtype
-        tipo di dati degli elementi del buffer di invio (handle)
-    recvcounts
-        array intero contenente il numero di elementi ricevuti da ogni processo
-    displs
-        array intero. La voce i specifica lo spostamento rispetto a recvbuf in cui collocare i dati in arrivo dal processo i
-    recvtype
-        tipo di dati degli elementi del buffer recv(handle)
-    root
-        rank del processo ricevente (intero)
-    comm
-        comunicatore (handle)
-    */    
-    /* raccoglie i dati da tutti i processi del communicator e li concatena nel buffer del processo master */
-    /* MPI_Gatherv consente ai messaggi ricevuti di avere lunghezze diverse e di essere memorizzati in posizioni arbitrarie nel buffer del processo principale. */
-    MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
+    /* 
+    raccoglie i dati da tutti i processi del communicator e li concatena nel buffer del processo master 
+    MPI_Gatherv consente ai messaggi ricevuti di avere lunghezze diverse e di essere memorizzati in posizioni arbitrarie nel buffer del processo principale. 
+    */
+    if(!is_file)
+        MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
+
+    /* il processo master mostra su stdout la matrice seed */
+    if(rank == MASTER) {
+        if(is_file || (row_size <= 50 && col_size <= 50) ) {
+            print_matrix(0, matrix, row_size, col_size);
+        }  
+    }
 
     /* calcolo rank processo successivo e precedente al corrente (tenendo conto del toroide) */
     prev = (rank - 1 + num_proc) % num_proc;
@@ -351,25 +375,7 @@ int main(int argc, char **argv)
     next_row = calloc(col_size, sizeof(char));
 
     for(int it = 0; it < iterations; it++) {
-        /*
-        sendbuf
-            indirizzo send buffer
-        sendcounts
-            array di interi (size righe) specifica il numero di elementi da inviare ad ogni processo
-        displs
-            array di interi. La voce i specifica lo spostamento (rispetto a sendbuf) da cui prendere i dati in uscita al processo i
-        sendtype
-            data type degli elementi del send buffer (handle)
-        recvcount
-            numero degli elements in receive buffer (integer)
-        recvtype
-            data type elementi receive buffer (handle)
-        root
-            rank del processo che invia (integer)
-        comm
-            communicator (handle)
-        */
-       /* la matrice inizializzata viene inviata, per righe, agli altri processi */
+        /* la matrice inizializzata viene inviata, per righe, agli altri processi */
         MPI_Scatterv(matrix, rows_for_proc, displacement, mat_row, recv_buff, rows_for_proc[rank], mat_row, MASTER, MPI_COMM_WORLD);
         int sub_rows_size = rows_for_proc[rank];
 
@@ -388,8 +394,9 @@ int main(int argc, char **argv)
 
         /* rank riceve la riga successiva dal suo predecessore */
         MPI_Irecv(next_row, 1, mat_row, next, TAG_NEXT, MPI_COMM_WORLD, &next_request);
-
+        
         /* calcola i valori delle celle che non necessitano di aiuto da altri processi quindi escluse prima e ultima riga */
+        //compute(recv_buff, result_buff, sub_rows_size, col_size);
         for (int i = 1; i < sub_rows_size - 1; i++) {
             for (int j = 0; j < col_size; j++) {
 
@@ -444,9 +451,12 @@ int main(int argc, char **argv)
         /* le righe appena calcolate vengono reinviate al master e memorizzate in matrix */
         MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 
+        MPI_Barrier(MPI_COMM_WORLD);
         /* nel caso di file viene mostrata la matrice dopo ogni iterazione */
-        if(is_file) {
-            print_matrix(it + 1, matrix, row_size, col_size);
+        if(rank == MASTER) {
+            if(is_file || (row_size <= 50 && col_size <= 50) ) {
+                print_matrix(it + 1, matrix, row_size, col_size);
+            }  
         }
     }
 
