@@ -23,8 +23,8 @@
 
 /* dimensioni di default della matrice, se non specificate */
 #define DEF_ROWS 24
-#define DEF_COLS 16
-#define DEF_ITERATION 6
+#define DEF_COLS 36
+#define DEF_ITERATION 10
 
 /* 
 * @brief Mostra una matrice su stdout 
@@ -266,8 +266,8 @@ int main(int argc, char **argv)
     switch (argc)
     {
     case 3: /* l'utente ha indicato un pattern da file */
+        is_file = true;
         if (rank == MASTER) {
-            is_file = true;
             /* preparazione file */
             dir = "patterns/";
             filename = argv[1];
@@ -396,26 +396,7 @@ int main(int argc, char **argv)
         MPI_Irecv(next_row, 1, mat_row, next, TAG_NEXT, MPI_COMM_WORLD, &next_request);
         
         /* calcola i valori delle celle che non necessitano di aiuto da altri processi quindi escluse prima e ultima riga */
-        //compute(recv_buff, result_buff, sub_rows_size, col_size);
-        for (int i = 1; i < sub_rows_size - 1; i++) {
-            for (int j = 0; j < col_size; j++) {
-
-                /* memorizza i vicini vivi nell'intorno della cella target */
-                int live_count = 0;
-                for (int row = i - 1; row < i + 2; row++) {
-                    for (int col = j - 1; col < j + 2; col++) {
-                        if (row == i && col == j) {
-                            continue;
-                        }
-                        if (recv_buff[row * col_size + (col % col_size)] == ALIVE) {
-                            live_count++;
-                        }       
-                    }
-                }
-                /* decide lo stato della cella per la generazione successiva */
-                life(recv_buff, result_buff, i * col_size + j, live_count);
-            }
-        }
+        compute(recv_buff, result_buff, sub_rows_size, col_size);
 
         MPI_Request to_wait[] = {prev_request, next_request};
         int handle_index;
@@ -451,7 +432,6 @@ int main(int argc, char **argv)
         /* le righe appena calcolate vengono reinviate al master e memorizzate in matrix */
         MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 
-        MPI_Barrier(MPI_COMM_WORLD);
         /* nel caso di file viene mostrata la matrice dopo ogni iterazione */
         if(rank == MASTER) {
             if(is_file || (row_size <= 50 && col_size <= 50) ) {
@@ -465,9 +445,6 @@ int main(int argc, char **argv)
     free(result_buff);
     free(next_row);
     free(prev_row);
-
-    /* sincronizza tutti i processi */
-    MPI_Barrier(MPI_COMM_WORLD);
 
     /* il processo master mostra il tempo di esecuzione */
     if(rank == MASTER) {

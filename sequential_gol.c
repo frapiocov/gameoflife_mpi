@@ -207,7 +207,7 @@ int main(int argc, char *argv[])
     start = MPI_Wtime();
 
     /* ripete il processo per ITERATIONS volte */
-    for (int current = 0; current < iterations - 1; current++) {
+    for (int current = 0; current < iterations; current++) {
         /* calcola la generazione successiva e mostra i risultati */
         if (current % 2 == 0) {
             life(matrix, copy);
