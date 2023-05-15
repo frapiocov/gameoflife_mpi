@@ -446,6 +446,8 @@ int main(int argc, char **argv)
     free(next_row);
     free(prev_row);
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
     /* il processo master mostra il tempo di esecuzione */
     if(rank == MASTER) {
         free(matrix);
