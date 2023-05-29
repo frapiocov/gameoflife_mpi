@@ -149,7 +149,6 @@ int main(int argc, char *argv[])
     int i, j; 
     char *dir, *filename, *ext, *file; /* vars per lettura file */
     double start, end; /*  per la misurazione del tempo */
-
     /* inizializzazione ambiente MPI */
     MPI_Init(&argc, &argv);
 
@@ -177,7 +176,7 @@ int main(int argc, char *argv[])
         /* numero di iterazioni da fare */
         iterations = atoi(argv[2]);
     }
-    else if(argc == 4 ) {
+    else if(argc == 4) {
         /* secondo opzione di esecuzione: l'utente può inserire
         *  numero di righe
         *  numero di colonne
@@ -192,8 +191,7 @@ int main(int argc, char *argv[])
         copy = calloc(row_size * col_size, sizeof(char));
         /* riempie la matrice in modo casuale */
         random_initialize(matrix);
-    }
-    else {
+    } else {
         printf("File not valid or bad number of arguments\n");
         MPI_Finalize();
         exit(0);

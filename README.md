@@ -9,88 +9,6 @@ Implementazione del modello matematico *Game of life* (John Conway - 1970) con l
 ----
 👤 Francesco Pio Covino
 
-## Compilazione ed esecuzione 
-Sono presenti due versioni dell'algoritmo, una versione sequenziale ed una parallela, entrambe utilizzano OpenMPI. La versione sequenziale utilizza OpenMPI solo per far in modo che la misurazione dei tempi sia svolta nel medesimo modo.
-
-<details>
-  <summary><b>GoL versione sequenziale</b></summary>
-
-Per la compilazione eseguire il seguente comando da terminale:  
-
-```c
-mpicc -o gol sequential_gol.c
-```
-Per l'esecuzione esistono due varianti:
-
-La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come viva conterrà il simbolo *O* mentre se indicata come morta conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
-
-Pulsar pattern             |  Glidergun pattern
-:-------------------------:|:-------------------------:
-![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
-
-Oltre al nome del file va specificato il numero di iterazioni da eseguire:
-```c
-mpirun -n 1 gol filename it
-// per esempio
-mpirun -n 1 gol pulsar 10
-```  
-La seconda variante permette di eseguire l'algoritmo specificando 3 argomenti:
-- numero di righe
-- numero di colonne
-- numero di iterazioni  
-
-N.B. La matrice di partenza verrà generata in maniera casuale.
-```c
-mpirun -n 1 gol rows cols it
-// per esempio
-mpirun -n 1 gol 100 200 8
-```  
-  
-</details>
-
-<details>
-    <summary><b>GoL versione parallela</b></summary>
-
-Per la compilazione eseguire il seguente comando da terminale:  
-
-```c
-mpicc -o execname programname.c
-// per esempio
-mpicc -o mpigol mpi_gol.c
-```  
-Per l'esecuzione esistono 3 varianti:
-
-La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come viva conterrà il simbolo *O* mentre se indicata come morta conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
-
-Pulsar pattern             |  Glidergun pattern
-:-------------------------:|:-------------------------:
-![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
-
-Oltre al nome del file va specificato il numero di iterazioni da eseguire e il numero di processi da utilizzare:
-```c
-mpirun -n N execname filename it
-// per esempio
-mpirun -n 5 mpigol pulsar 10
-```  
-La seconda variante permette di eseguire l'algoritmo specificando 3 argomenti:
-- numero di righe
-- numero di colonne
-- numero di iterazioni  
-
-N.B. La matrice di partenza verrà generata in maniera casuale.
-```c
-mpirun -n N execname rows cols it
-// per esempio
-mpirun -5  mpigol 100 200 8
-``` 
-La terza variante non richiede alcun argomento aggiuntivo ed eseguirà l'algoritmo utilizzando i parametri di default (una matrice 240x160 su 6 iterazioni), riempendo la matrice con valori casuali.
-```c
-mpirun -n N execname
-// per esempio
-mpirun -5  mpigol
-```  
-
-</details>
 
 ## Soluzione proposta
 Game of life è un modello matematico creato da John Conway nel 1970.
@@ -115,7 +33,7 @@ N.B. Nella spiegazione verrà preso in esame il caso in cui l'utente ha scelto l
 
 - Le righe risultanti vengono re-inviate al MASTER attraverso l'uso della routine `MPI_Gatherv`.
 
-## Struttura progetto
+## Dettagli Implementazione
 Di seguito alcuni degli aspetti cruciali dell'implementazione.
 
 In base al numero di argomenti inseriti dall'utente, viene scelto la variante di esecuzione: nel primo caso il processo master riempie la matrice da file, nel secondo caso le dimensioni sono scelte dall'utente e nel terzo sono quelle di default.
@@ -331,8 +249,142 @@ Le righe, con i valori aggiornati per la prossima generazione, vengono re-inviat
 MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 ```
 
+## Compilazione ed esecuzione 
+Sono presenti due versioni dell'algoritmo, una versione sequenziale ed una parallela, entrambe utilizzano OpenMPI. La versione sequenziale utilizza OpenMPI solo per far in modo che la misurazione dei tempi sia svolta nel medesimo modo.
+
+<details>
+  <summary><b>GoL versione sequenziale</b></summary>
+
+Per la compilazione eseguire il seguente comando da terminale:  
+
+```c
+mpicc -o gol sequential_gol.c
+```
+Per l'esecuzione esistono due varianti:
+
+La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come viva conterrà il simbolo *O* mentre se indicata come morta conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
+
+Pulsar pattern             |  Glidergun pattern
+:-------------------------:|:-------------------------:
+![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
+
+Oltre al nome del file va specificato il numero di iterazioni da eseguire:
+```c
+mpirun -n 1 gol pulsar 10
+```  
+La seconda variante permette di eseguire l'algoritmo specificando 3 argomenti:
+- numero di processi
+- numero di righe
+- numero di colonne
+- numero di iterazioni  
+
+N.B. La matrice di partenza verrà generata in maniera casuale.
+```c
+mpirun -n 1 gol 100 200 8
+```  
+  
+</details>
+
+<details>
+    <summary><b>GoL versione parallela</b></summary>
+
+Per la compilazione eseguire il seguente comando da terminale:  
+
+```c
+mpicc -o mpigol mpi_gol.c
+```  
+Per l'esecuzione esistono 3 varianti:
+
+La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come viva conterrà il simbolo *O* mentre se indicata come morta conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
+
+Pulsar pattern             |  Glidergun pattern
+:-------------------------:|:-------------------------:
+![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
+
+Oltre al nome del file va specificato il numero di iterazioni da eseguire e il numero di processi da utilizzare:
+```c
+mpirun -n 5 mpigol pulsar 10
+```  
+La seconda variante permette di eseguire l'algoritmo specificando 3 argomenti:
+- numero di processori
+- numero di righe
+- numero di colonne
+- numero di iterazioni  
+
+N.B. La matrice di partenza verrà generata in maniera casuale.
+```c
+mpirun -n 5 mpigol 100 200 8
+``` 
+La terza variante non richiede alcun argomento aggiuntivo ed eseguirà l'algoritmo utilizzando i parametri di default (una matrice 240x160 su 6 iterazioni), riempendo la matrice con valori casuali.
+```c
+mpirun -n 5 mpigol
+```  
+
+</details>
+
+## Correttezza
+Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern noti, *pulsar* e *glidergun*. Il programma è stato eseguito per un numero fisso di iterazioni pari a 10 e variando il numero di processi utilizzati.
+
+| Pulsar | GliderGun |
+| --- | --- |
+| <img src="images/pulsar.png" height="200" /> | <img src="images/glidergun.png" height="200" /> |
+
+**Risultati Pattern GliderGun**
+| ver. sequenziale | 2 processi | 4 processi | 8 processi |
+| --- | --- | --- | --- |
+| <img src="images/resultsGG/res-seq.png" height="200" /> | <img src="images/resultsGG/res-2.png" height="200" /> | <img src="images/resultsGG/res-4.png" height="200" /> | <img src="images/resultsGG/res-8.png" height="200" /> |
+
+**Risultati Pattern Pulsar**
+| ver. sequenziale | 2 processi | 4 processi | 8 processi |
+| --- | --- | --- | --- |
+| <img src="images/resultsPS/res-seq.png" height="200" /> | <img src="images/resultsPS/res-2.png" height="200" /> | <img src="images/resultsPS/res-4.png" height="200" /> | <img src="images/resultsPS/res-8.png" height="200" /> |
+
+Tutti i test, dopo le 10 iterazioni prefissate, restituiscono lo stesso risultato confermando la correttezza della soluzione indipendentemente dal numero di processi utilizzati. 
+
 ## Analisi performance
+minimo 4 nodi con 4vcpu - 16vcpu
 in termini di scalabilità forte e debole
+
+Le prestazioni sono state valutate su un cluster Azure di 4 nodi micro con 4vCPU in termini di scalabilità forte e di scalabilità debole. 
+
+### Scalabilità forte
+Lo scaling forte riguarda lo speedup per una dimensione fissa del problema rispetto al numero di processori ed è governato dalla legge di Amdahl. Per il test le dimensioni della matrice di partenza sono state fissate a 6000 righe e 6000 colonne e a variare sarà il numero di processori utilizzati. Il numero di iterazioni è stato fissato a 100.
+
+| # Processori | Dim. matrice | Tempi di esecuzione (ms) |
+| --- | --- | --- |
+| 1 | 6000 x 6000 | 0.1 |
+| 2 | 6000 x 6000 | |
+| 3 | 6000 x 6000 | |
+| 4 | 6000 x 6000 | |
+| 5 | 6000 x 6000 | |
+| 6 | 6000 x 6000 | |
+| 7 | 6000 x 6000 | |
+| 8 | 6000 x 6000 | |
+| 9 | 6000 x 6000 | |
+| 10 | 6000 x 6000 | |
+| 11 | 6000 x 6000 | |
+| 12 | 6000 x 6000 | |
+| 13 | 6000 x 6000 | |
+| 14 | 6000 x 6000 | |
+| 15 | 6000 x 6000 | |
+| 16 | 6000 x 6000 | |
+
+
+### Scalabilità debole
+Lo scaling debole riguarda lo speedup per un problema di dimensioni scalari rispetto al numero di processori ed è governato dalla legge di Gustafson. Il numero di processori è stato fissato a 4 e il numero di iterazioni a 100. A variare sono le dimensioni della matrice di partenza.
+
+| # Processori | Dim. matrice | Tempi di esecuzione (ms) |
+| --- | --- | --- |
+| 4 | 1000 x 1000 | 0.1 |
+| 4 | 2000 x 2000 | |
+| 4 | 4000 x 4000 | |
+| 4 | 6000 x 6000 | |
+| 4 | 8000 x 8000 | |
+| 4 | 16000 x 16000 | |
 
 ## Conclusioni
 motivazioni performance ottenute
+
+
+domande : 
+tutti i test dal medesimo input?

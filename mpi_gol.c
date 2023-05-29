@@ -263,8 +263,7 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     
-    switch (argc)
-    {
+    switch (argc) {  
     case 3: /* l'utente ha indicato un pattern da file */
         is_file = true;
         if (rank == MASTER) {
@@ -446,6 +445,7 @@ int main(int argc, char **argv)
     free(next_row);
     free(prev_row);
 
+    /* sincronizza tutti i processi affinchè siano tutti al medesimo punto */
     MPI_Barrier(MPI_COMM_WORLD);
 
     /* il processo master mostra il tempo di esecuzione */
