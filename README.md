@@ -18,7 +18,7 @@ N.B. Nella spiegazione verrà preso in esame il caso in cui l'utente ha scelto l
 
 - La matrice viene allocata in porzioni di memoria contigue e quindi è fisicamente un array ma viene trattata logicamente come una matrice.
 
-- La comunicazione fra processi sarà ad anello o toroidale, il successore del processo con rank *n-1* avrà rank *0* e di conseguenza il predecessore del processo con rank *0* avrà rank *n-1*.
+- La comunicazione fra processi è ad anello o toroidale, il successore del processo con rank *n-1* avrà rank *0* e di conseguenza il predecessore del processo con rank *0* avrà rank *n-1*.
 
 - La matrice *NxM* viene allocata dal processo MASTER ed inizializzata da tutti i *P* processi. Ogni processo inizializza un insieme di righe, di default saranno *N/numero_di_processi* ma in caso di divisione non equa le righe in più vengono ridistribuite. Le righe inizializzate vengono poi re-inviate al processo MASTER attraverso l'uso della routine `MPI_Gatherv`.
 
@@ -33,10 +33,10 @@ N.B. Nella spiegazione verrà preso in esame il caso in cui l'utente ha scelto l
 
 - Le righe risultanti vengono re-inviate al MASTER attraverso l'uso della routine `MPI_Gatherv`.
 
-## Dettagli Implementazione
-Di seguito alcuni degli aspetti cruciali dell'implementazione.
+## Dettagli Implementativi
+Di seguito alcuni degli aspetti più importanti dell'implementazione.
 
-In base al numero di argomenti inseriti dall'utente, viene scelto la variante di esecuzione: nel primo caso il processo master riempie la matrice da file, nel secondo caso le dimensioni sono scelte dall'utente e nel terzo sono quelle di default.
+In base al numero di argomenti inseriti dall'utente, viene scelto la variante da eseguire: nel primo caso il processo master riempie la matrice da file, nel secondo caso le dimensioni sono scelte dall'utente e nel terzo sono quelle di default.
 ```c
 switch (argc)
     {
@@ -75,7 +75,7 @@ switch (argc)
         break;
     }
 ```  
-Viene creato un nuovo tipo di dato MPI replicando MPI_CHAR col_size (col_size indica il numero di colonne della matrice) volte in posizioni contigue. Permette di migliorare le prestazioni nel passaggio di dati di grandi dimensioni.
+Viene creato un nuovo tipo di dato MPI replicando `MPI_CHAR` col_size (col_size indica il numero di colonne della matrice) volte in posizioni contigue. Permette di migliorare le prestazioni nel passaggio di dati di grandi dimensioni.
 ```c
 MPI_Type_contiguous(col_size, MPI_CHAR, &mat_row);
 MPI_Type_commit(&mat_row);
@@ -244,7 +244,7 @@ void compute_next(char* origin_buff, char* result_buff, char* next_row, int row_
 }
 ```
 
-Le righe, con i valori aggiornati per la prossima generazione, vengono re-inviate al processo padre e concatenate in matrix con la routine `MPI_Gatherv`:
+Le righe, con i valori aggiornati per la prossima generazione, vengono re-inviate al processo padre e concatenate nella matrice con la routine `MPI_Gatherv`:
 ```c
 MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
 ```
@@ -323,11 +323,15 @@ mpirun -n 5 mpigol
 </details>
 
 ## Correttezza
-Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern noti, *pulsar* e *glidergun*. Il programma è stato eseguito per un numero fisso di iterazioni pari a 10 e variando il numero di processi utilizzati.
+Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern noti, *pulsar* e *glidergun*. 
 
 | Pulsar | GliderGun |
 | --- | --- |
 | <img src="images/pulsar.png" height="200" /> | <img src="images/glidergun.png" height="200" /> |
+
+Il risultato è stato confrontato con una simulazione testabile [qui](https://conwaylife.com/). Il programma è stato eseguito per un numero fisso di iterazioni pari a 10 e variando il numero di processi utilizzati. Di seguito i risultati:
+
+
 
 **Risultati Pattern GliderGun**
 | ver. sequenziale | 2 processi | 4 processi | 8 processi |
@@ -342,13 +346,10 @@ Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern 
 Tutti i test, dopo le 10 iterazioni prefissate, restituiscono lo stesso risultato confermando la correttezza della soluzione indipendentemente dal numero di processi utilizzati. 
 
 ## Analisi performance
-minimo 4 nodi con 4vcpu - 16vcpu
-in termini di scalabilità forte e debole
-
-Le prestazioni sono state valutate su un cluster Azure di 4 nodi micro con 4vCPU in termini di scalabilità forte e di scalabilità debole. 
+Le prestazioni sono state valutate su un cluster Google di 4 nodi e2-standard-4 con 4vCPU in termini di scalabilità forte e di scalabilità debole. 
 
 ### Scalabilità forte
-Lo scaling forte riguarda lo speedup per una dimensione fissa del problema rispetto al numero di processori ed è governato dalla legge di Amdahl. Per il test le dimensioni della matrice di partenza sono state fissate a 6000 righe e 6000 colonne e a variare sarà il numero di processori utilizzati. Il numero di iterazioni è stato fissato a 100.
+Lo scaling forte riguarda lo speedup per una dimensione fissa del problema rispetto al numero di processori. Per il test le dimensioni della matrice di partenza sono state fissate a 6000 righe e 6000 colonne e a variare sarà il numero di processori utilizzati. Il numero di iterazioni è stato fissato a 100.
 
 | # Processori | Dim. matrice | Tempi di esecuzione (ms) |
 | --- | --- | --- |
@@ -371,20 +372,16 @@ Lo scaling forte riguarda lo speedup per una dimensione fissa del problema rispe
 
 
 ### Scalabilità debole
-Lo scaling debole riguarda lo speedup per un problema di dimensioni scalari rispetto al numero di processori ed è governato dalla legge di Gustafson. Il numero di processori è stato fissato a 4 e il numero di iterazioni a 100. A variare sono le dimensioni della matrice di partenza.
+Lo scaling debole riguarda lo speedup per un problema di dimensioni scalari rispetto al numero di processori. Il numero di processori è stato fissato a 8 e il numero di iterazioni a 100. A variare sono le dimensioni della matrice di partenza.
 
 | # Processori | Dim. matrice | Tempi di esecuzione (ms) |
 | --- | --- | --- |
-| 4 | 1000 x 1000 | 0.1 |
-| 4 | 2000 x 2000 | |
-| 4 | 4000 x 4000 | |
-| 4 | 6000 x 6000 | |
-| 4 | 8000 x 8000 | |
-| 4 | 16000 x 16000 | |
+| 8 | 1000 x 1000 | 0.1 |
+| 8 | 2000 x 2000 | |
+| 8 | 4000 x 4000 | |
+| 8 | 6000 x 6000 | |
+| 8 | 8000 x 8000 | |
+| 8 | 16000 x 16000 | |
 
 ## Conclusioni
 motivazioni performance ottenute
-
-
-domande : 
-tutti i test dal medesimo input?
