@@ -381,14 +381,14 @@ int main(int argc, char **argv)
         /* invio e ricezione delle righe di bordo in modalità non bloccante*/
 
         /* rank invia la sua prima riga al processo precedente */
-        MPI_Isend(recv_buff, 1, mat_row, prev, TAG_NEXT, MPI_COMM_WORLD, &send_request);
+        MPI_Isend(recv_buff, 1, mat_row, prev, TAG_PREV, MPI_COMM_WORLD, &send_request);
         MPI_Request_free(&send_request);
 
         /* rank riceve la riga precedente dal suo predecessore */
         MPI_Irecv(prev_row, 1, mat_row, prev, TAG_PREV, MPI_COMM_WORLD, &prev_request);
 
         /* rank invia la sua ultima riga al suo successore */
-        MPI_Isend(recv_buff + (col_size * (sub_rows_size - 1)), 1, mat_row, next, TAG_PREV, MPI_COMM_WORLD, &send_request);
+        MPI_Isend(recv_buff + (col_size * (sub_rows_size - 1)), 1, mat_row, next, TAG_NEXT, MPI_COMM_WORLD, &send_request);
         MPI_Request_free(&send_request);
 
         /* rank riceve la riga successiva dal suo predecessore */
