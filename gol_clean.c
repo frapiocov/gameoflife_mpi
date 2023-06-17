@@ -2,6 +2,7 @@
  * Game of Life, versione parallela con OpenMPI
  * Francesco Pio Covino
  */
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -20,88 +21,6 @@
 /* tag per identificare invio e ricezione */
 #define TAG_NEXT 14
 #define TAG_PREV 41
-
-/* dimensioni di default della matrice, se non specificate */
-#define DEF_ROWS 240
-#define DEF_COLS 360
-#define DEF_ITERATION 10
-
-/* 
-* @brief Mostra una matrice su stdout 
-* 
-* @param gen numero di generazione mostrata
-* @param matrice da mostrare
-* @param rows numero di righe della matrice
-* @param cols numero di colonne della matrice
-*/
-void print_matrix(int gen, char *mat, int rows, int cols)
-{
-    printf("\nGeneration %d:\n", gen);
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("%c", mat[i * cols + j]);
-        }
-        printf("\n");
-    }
-}
-
-/* 
-* @brief Inizializza una matrice da file
-* 
-* @param mat matrice da riempire
-* @param rows numero di righe della matrice
-* @param cols numero di colonne della matrice
-* @param file file da cui prendere i dati
-*/
-void init_from_file(char *mat, int rows, int cols, char *file) {
-    /* carattere letto */
-    char c; 
-    FILE *fptr;
-    fptr = fopen(file, "r");
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            fscanf(fptr, "%c ", &c);
-            mat[i * cols + j] = c;
-        }
-    }
-    fclose(fptr);
-}
-
-void init_test_matrix(char *mat, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            mat[i * cols + j] = DEAD;
-        }
-    }
-}
-
-/* 
-* @brief Setta il valore di righe e colonne in base al file pattern caricato 
-* 
-* @param filename path del file scelto
-* @param row_size indirizzo variabile in cui memorizzare il numero di righe
-* @param col_size indirizzo var in cui memorizzare il numero di colonne
-*/
-void check_matrix_size(char *filename, int *row_size, int *col_size) {
-    int rows = 0, lines = 0;
-    char c;
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        printf("Error.\n");
-        return;
-    }
-    /* conteggia righe e colonne del file */
-    while ((c = fgetc(file)) != EOF) {
-        if (c == '\n') { rows++; }
-        if (c == '.' || c == 'O') { lines++; }
-    }
-    /* caso speciale ultima riga */
-    if (lines > 0) { rows++; }
-    /* setta il valore di righe e colonne */
-    *row_size = rows;
-    *col_size = lines / rows;
-    fclose(file);
-}
 
 /*
  * @brief Decide lo stato della cella per la generazione successiva
@@ -256,16 +175,13 @@ int main(int argc, char **argv)
     
     int *rows_for_proc, /* memorizza il numero di righe assegnate ad ogni processo */
         *displ_for_proc;  /* memorizza il displacement per ogni processo */
-    
+    int handle_index;
     char *game_matrix;        /* matrice di gioco */
     
     char *process_buffer,  /* buffer usato dal singolo processore per memorizzare le righe della propria computazione */
         *result_buffer, /* buffer usato dal singolo processore per memorizzare il risultato della propria computazione */
         *prev_row, /* riga precedente alle proprie */
         *next_row; /* riga successiva alle proprie */
-    
-    char *dir, *filename, *ext, *file; /* variabili per la lettura da file */
-    bool is_file = false, is_test = false; /* indica che la matrice è stata riempita da file */
 
     MPI_Request send_request = MPI_REQUEST_NULL; /* Request per l'invio di dati fra i processori */
     MPI_Request prev_request = MPI_REQUEST_NULL; /* Request per la ricezione dal processo precedente */
@@ -278,49 +194,15 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     
-    switch (argc) {  
-    case 3: /* l'utente ha indicato un pattern da file */
-        is_file = true;
-        if (rank == MASTER) {
-            /* preparazione file */
-            dir = "patterns/";
-            filename = argv[1];
-            ext = ".txt";
-            file = malloc(strlen(dir) + strlen(filename) + strlen(ext) + 1);
-            sprintf(file, "%s%s%s", dir, filename, ext);
-            printf("--Generate game matrix seed from %s--\n", file);
-            /* il processo master calcola le dimensioni della matrice in base al file */
-            check_matrix_size(file, &row_size, &col_size);
-        }
-        /* MASTER invia la size della matrice a tutti i processi */
-        MPI_Bcast(&row_size, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
-        MPI_Bcast(&col_size, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
-        generations = atoi(argv[2]);
-        break;    
-    case 4: /* le dimensioni sono scelte dall'utente */
+    if(argc == 4) {
         row_size = atoi(argv[1]);
         col_size = atoi(argv[2]);
         generations = atoi(argv[3]);
-        break;
-    case 5: /* le dimensioni sono scelte dall'utente e la matrice viene stampata ad ogni iterazione */
-        if(strcmp(argv[4], "test") == 0) {
-           is_test = true; 
-        }
-        row_size = atoi(argv[1]);
-        col_size = atoi(argv[2]);
-        generations = atoi(argv[3]);
-        break;    
-    case 1: /* configurazioni di default */
-        row_size = DEF_ROWS;
-        col_size = DEF_COLS;
-        generations = DEF_ITERATION;
-        break;
-    default:
+    } else {
         printf("Error, check the number of arguments.\n");
         MPI_Finalize();
         return 0;
-        break;
-    }
+    }   
 
     /* crea un nuovo tipo di dato MPI replicando MPI_CHAR col_size volte in posizioni contigue */
     MPI_Type_contiguous(col_size, MPI_CHAR, &row_data);
@@ -353,17 +235,6 @@ int main(int argc, char **argv)
     if(rank == MASTER) {    
         /* nel caso di file presente, solo master inizializza la matrice */
         start_time = MPI_Wtime();
-        if(is_file) {
-            /* viene allocata la matrice di gioco */ 
-            game_matrix = calloc(row_size*col_size, sizeof(char));
-            /* inizializzata da file */
-            init_from_file(game_matrix, row_size, col_size, file);
-        }
-        if(is_test) {
-            /* viene allocata la matrice di gioco per mostrare i risultati delle varie operazioni */ 
-            game_matrix = calloc(row_size*col_size, sizeof(char));
-            init_test_matrix(game_matrix, row_size, col_size);
-        }
         printf("Settings: generations %d \trows %d \tcolumns %d\n", generations, row_size, col_size);
     }
 
@@ -371,34 +242,12 @@ int main(int argc, char **argv)
     process_buffer = calloc(rows_for_proc[rank] * col_size, sizeof(char));
     
     /* se non è presente file, ogni processo inizializza la sua porzione con valori casuali */
-    if(!is_file) {
-        srand(time(NULL) + rank);
-        for(int i = 0; i < rows_for_proc[rank] * col_size; i++) {
-            if (rand() % 2 == 0) {
-                process_buffer[i] = ALIVE;
-            } else {
-                process_buffer[i] = DEAD;
-            }
-        }  
-    }
-
-    /* 
-    raccoglie i dati da tutti i processi del communicator e li concatena nel buffer del processo master 
-    MPI_Gatherv consente ai messaggi ricevuti di avere lunghezze diverse e di essere memorizzati
-    in posizioni arbitrarie nel buffer del processo MASTER. 
-    
-    Utilizzata solo nella fase di test per stampare la matrice a video
-    */
-    
-    if(is_test) {
-        MPI_Gatherv(process_buffer, rows_for_proc[rank], row_data, game_matrix, rows_for_proc, displ_for_proc, row_data, MASTER, MPI_COMM_WORLD); 
-    }
-
-        
-    /* in caso di test o di file, il processo MASTER mostra su stdout la matrice di partenza */
-    if(rank == MASTER) {
-        if(is_file || is_test) {
-            print_matrix(0, game_matrix, row_size, col_size);
+    srand(time(NULL) + rank);
+    for(int i = 0; i < rows_for_proc[rank] * col_size; i++) {
+        if (rand() % 2 == 0) {
+            process_buffer[i] = ALIVE;
+        } else {
+            process_buffer[i] = DEAD;
         }
     }
 
@@ -426,12 +275,7 @@ int main(int argc, char **argv)
                 result_buffer = temp;
             }
         }
-        
 
-        /* la matrice inizializzata da file viene divisa ed inviata, per righe, agli altri processi */
-        if(is_file) {
-            MPI_Scatterv(game_matrix, rows_for_proc, displ_for_proc, row_data, process_buffer, rows_for_proc[rank], row_data, MASTER, MPI_COMM_WORLD);
-        }
             
         /* invio e ricezione delle righe di bordo in modalità non bloccante*/
         /* rank invia la sua prima riga al processo precedente */
@@ -452,7 +296,6 @@ int main(int argc, char **argv)
         compute(process_buffer, result_buffer, rows_for_proc[rank], col_size);
 
         MPI_Request to_wait[] = {prev_request, next_request};
-        int handle_index;
         /* attende il completamento delle comunicazioni */
         MPI_Waitany(
             2, /* numero di richieste */
@@ -481,20 +324,6 @@ int main(int argc, char **argv)
             MPI_Wait(&next_request, MPI_STATUS_IGNORE);
             compute_next(process_buffer, result_buffer, next_row, rows_for_proc[rank], col_size);
         }
-
-        /* 
-            le righe appena calcolate vengono reinviate al master e memorizzate in game_matrix
-            nel caso di test e file per permettere di mostrare la matrice a video
-        */
-        if (is_test || is_file)
-            MPI_Gatherv(result_buffer, rows_for_proc[rank], row_data, game_matrix, rows_for_proc, displ_for_proc, row_data, MASTER, MPI_COMM_WORLD);
-
-        /* nel caso di file o di test viene mostrata la matrice dopo ogni iterazione */
-        if(rank == MASTER) {
-            if(is_file || is_test) {
-                print_matrix(gen + 1, game_matrix, row_size, col_size);
-            }
-        }
     }
     
     /* sincronizza tutti i processi affinchè arrivino tutti al medesimo punto */
@@ -508,9 +337,6 @@ int main(int argc, char **argv)
 
     /* il processo master mostra il tempo di esecuzione */
     if(rank == MASTER) {
-        if(is_file || is_test){
-          free(game_matrix);  
-        }
         end_time = MPI_Wtime();
         printf("\nExecution Time: %f ms\n", end_time - start_time);
     }
