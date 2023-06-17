@@ -275,7 +275,6 @@ int main(int argc, char **argv)
                 result_buffer = temp;
             }
         }
-
             
         /* invio e ricezione delle righe di bordo in modalità non bloccante*/
         /* rank invia la sua prima riga al processo precedente */

@@ -362,7 +362,7 @@ Le prestazioni sono state valutate su un cluster GoogleCloud di 4 nodi e2-standa
 ## Scalabilità forte
 La scalabilità forte riguarda lo speedup per una dimensione fissa del problema rispetto al numero di processori. Per il test le dimensioni della matrice di partenza sono state fissate a 4000 righe e 4000 colonne e a variare sarà il numero di processori utilizzati (da 1 a 16). Il numero di iterazioni è stato fissato a 50. I tempi di esecuzione sono stati calcolati su una media di 3 esecuzioni. Di seguito i risultati in formato tabellare:
 
-### Versione 1
+### Tabella Versione 1 & Versione 2
 | # Processori | Dim. matrice (R=C) | Tempi di esecuzione (ms) | Speedup |
 | --- | --- | --- | --- |
 | 1 | 4000 | 64,89 | // |
@@ -382,26 +382,6 @@ La scalabilità forte riguarda lo speedup per una dimensione fissa del problema 
 | 15 | 4000 | 7,59 | 8,54 |
 | 16 | 4000 | 7,39 | 8,77 |
 
-### Versione 2
-| # Processori | Dim. matrice (R=C) | Tempi di esecuzione (ms) | Speedup |
-| --- | --- | --- | --- |
-| 1 | 4000 |  | // |
-| 2 | 4000 |  |  |
-| 3 | 4000 |  |  |
-| 4 | 4000 |  |  |
-| 5 | 4000 |  |  |
-| 6 | 4000 |  |  |
-| 7 | 4000 |  |  | 
-| 8 | 4000 |  |  |
-| 9 | 4000 |  |  | 
-| 10 | 4000 |  |  |
-| 11 | 4000 |  |  |
-| 12 | 4000 |  |  |
-| 13 | 4000 |  |  |
-| 14 | 4000 |  |  |
-| 15 | 4000 |  |  |
-| 16 | 4000 |  |  |
-
 Di seguito invece il grafico che mostra il rapporto fra i tempi di esecuzione (ordinata) e il numero di processori utilizzati (ascissa). Inizialmente il tempo di esecuzione scende vertiginosamente fino a stabilizzarsi dagli 8 processori in poi.
 
 <img src="images/strong_scal.png" height="400" />
@@ -414,24 +394,24 @@ Nel grafico seguente invece viene mostrato come varia lo speedup (ordinata) al c
 Lo scaling debole riguarda lo speedup per un problema di dimensioni scalari rispetto al numero di processori. Il numero di processori è stato fissato a 8 e il numero di iterazioni a 50. A variare sono le dimensioni della matrice di partenza. Dopo ogni prova aumentano il numero di righe e colonne gestite dal singolo processo (aggiunte 10 righe e 10 colonne).
 Di seguito i risultati sotto forma di tabella:
 
-| # Processori | Dim. matrice (R=C) | Tempi di esecuzione (ms) |
-| --- | --- | --- |
-| 8 | 160 | 0.6420 |
-| 8 | 320 | 0.1048 |
-| 8 | 400 | 0.1382 |
-| 8 | 480 | 0.1760 |
-| 8 | 560 | 0.2381 |
-| 8 | 640 | 0.2771 |
-| 8 | 720 | 0.3966 |
-| 8 | 800 | 0.5469 |
-| 8 | 880 | 0.6190 |
-| 8 | 960 | 0.6670 |
-| 8 | 1040 | 0.7797 |
-| 8 | 1280 | 1.1082 |
+| # Processori | Dim. matrice (R=C) | Tempi di esecuzione VERS.1 (ms) | Tempi di esecuzione VERS.2 (ms) | 
+| --- | --- | --- | --- |
+| 8 | 160 | 0.6420 | 0.0090 |
+| 8 | 320 | 0.1048 | 0.0417 |
+| 8 | 400 | 0.1382 | 0.0609 |
+| 8 | 480 | 0.1760 | 0.0834 |
+| 8 | 560 | 0.2381 | 0.1135 |
+| 8 | 640 | 0.2771 | 0.1470 |
+| 8 | 720 | 0.3966 | 0.1888 |
+| 8 | 800 | 0.5469 | 0.2402 |
+| 8 | 880 | 0.6190 | 0.2884 |
+| 8 | 960 | 0.6670 | 0.3658 |
+| 8 | 1040 | 0.7797 | 0.4021 |
+| 8 | 1280 | 1.1082 | 0.6445 |
 
 Il grafico invece mostra il rapporto tra il tempo di esecuzione (ordinata) e la dimensione della matrice quadrata (ascissa):
 
-<img src="images/weak2.png" height="400" />
+<img src="images/weak_scal.png" height="400" />
 
 ## Conclusioni
 Come mostrato nei risultati, la soluzione proposta scala discretamente bene. I processi lavorano parallelamente dalla prima fase dell'algoritmo, il riempimento della matrice, fino alla fase di calcolo della generazione successiva. Il processo MASTER si occupa di dividere la matrice e di riunire i risultati di ogni processo ma partecipa anch'esso alla computazione.
