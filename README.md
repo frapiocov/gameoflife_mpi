@@ -18,27 +18,30 @@ La seguente è un'implentazione in C con l'utilizzo di OpenMPI. La soluzione pro
 
 - La comunicazione fra processi segue il pattern ad anello o toroidale, il successore del processo con rank *n-1* avrà rank *0* e di conseguenza il predecessore del processo con rank *0* avrà rank *n-1*.
 
-- La matrice *NxM* viene allocata dal processo MASTER ed inizializzata da tutti i *P* processi in parallelo. Ogni processo inizializza un insieme di righe, di default sono *N/numero_di_processi* ma in caso di divisione non equa le righe in più  vengono ridistribuite. Le righe inizializzate vengono poi re-inviate al processo MASTER attraverso l'uso della routine `MPI_Gatherv`.
+- La matrice viene suddivisa in modo equo tra tutti i processi, MASTER compreso. Ad ogni processo vengono assegnate `row_size/num_proc` righe, tranne nel caso di resto presente: i primi 'resto' processi ricevono una riga in più.
 
-- La matrice inizializzata viene suddivisa in modo equo tra tutti i processi, MASTER compreso, attraverso la routine `MPI_Scatterv`.
+- Ogni processo alloca la propria porzione di righe e la inizializza con valori casuali (ALIVE o DEAD).
 
-- I processi, in modalità asincrona, eseguono le seguenti operazioni:
-    - calcolano il rank del proprio successore e predecessore nell'anello.
-    - inviano (`MPI_Isend`) la loro prima riga al loro predecessore e la loro ultima riga al loro successore.
-    - Si preparano a ricevere (`MPI_Irecv`) la riga di bordo superiore dal loro predecessore e la riga di bordo inferiore dal loro successore.
-    - Mentre attendono le righe di bordo, iniziano ad eseguire l'algoritmo di GameofLife nelle zone della matrice in cui gli altri processi non sono coinvolti (essenzialmente tutte le righe escluse la prima e l'ultima).
-    - Ricevute le righe di bordo, i processi eseguono l'algoritmo anche sulle celle che necessitano dell'utilizzo di quest'ultime.
+- Vengono utilizzati due puntatori: `process_buffer` e `result_buffer`. Il primo punta alla porzione di righe inizializzata dal processo mentre il secondo punta alla porzione di memoria che conterrà i nuovi valori dopo l'esecuzione di GameOfLife. Prima di ogni iterazione, i due puntatori vengono scambiati per memorizzare i valori di partenza della successiva generazione.  
 
-- Le righe risultanti vengono re-inviate al MASTER attraverso l'uso della routine `MPI_Gatherv`.
+- Per un numero di volte pari al numero di generazioni scelto, ogni processo esegue le seguenti operazioni:
+    - calcola il rank del proprio successore e predecessore nell'anello.
+    - invia in modalità asincrona (`MPI_Isend`) la sua prima riga al predecessore e la sua ultima riga al successore.
+    - si prepara a ricevere in modalità asincrona (`MPI_Irecv`) la riga di bordo superiore dal suo predecessore e la riga di bordo inferiore dal suo successore.
+    - mentre attende le righe di bordo, esegue l'algoritmo di GameofLife nelle zone della matrice in cui gli altri processi non sono coinvolti (essenzialmente tutte le righe escluse la prima e l'ultima).
+    - ricevute le righe di bordo, il processo esegue l'algoritmo anche sulle celle che necessitano dell'utilizzo di quest'ultime. 
 
 ## Dettagli Implementativi
 Di seguito alcuni degli aspetti più importanti dell'implementazione.
 
 #### Analisi degli argomenti
-In base al numero di argomenti inseriti dall'utente, viene scelto la variante da eseguire: nel primo caso il processo MASTER riempie la matrice iniziale con un file pattern, nel secondo caso le dimensioni sono scelte dall'utente e nel terzo caso vengono utilizzate quelle di default.
+In base al numero di argomenti inseriti dall'utente, viene scelto la variante da eseguire: 
+- nel primo caso il processo MASTER riempie la matrice iniziale con un file pattern e ad ogni iterazione viene mostrata a video
+- nel secondo caso le dimensioni sono scelte dall'utente
+- nel terzo caso è sempre l'utente a scegliere le dimensioni ma la matrice viene stampata ad ogni iterazione
+- nell'ultimo caso vengono utilizzate le dimensioni di default
 ```c
-switch (argc)
-    {
+switch (argc) {  
     case 3: /* l'utente ha indicato un pattern da file */
         is_file = true;
         if (rank == MASTER) {
@@ -48,24 +51,32 @@ switch (argc)
             ext = ".txt";
             file = malloc(strlen(dir) + strlen(filename) + strlen(ext) + 1);
             sprintf(file, "%s%s%s", dir, filename, ext);
-            printf("--Generate matrix seed from %s--\n", file);
-            /* il processo master imposta le dimensioni della matrice in base al file di input */
+            printf("--Generate game matrix seed from %s--\n", file);
+            /* il processo master calcola le dimensioni della matrice in base al file */
             check_matrix_size(file, &row_size, &col_size);
         }
-        /* master invia la size della matrice a tutti i processi */
+        /* MASTER invia la size della matrice a tutti i processi */
         MPI_Bcast(&row_size, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
         MPI_Bcast(&col_size, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
-        iterations = atoi(argv[2]);
-        break;
+        generations = atoi(argv[2]);
+        break;    
     case 4: /* le dimensioni sono scelte dall'utente */
         row_size = atoi(argv[1]);
         col_size = atoi(argv[2]);
-        iterations = atoi(argv[3]);
+        generations = atoi(argv[3]);
         break;
-    case 1: /* esegue l'algoritmo con le configurazioni di default */
+    case 5: /* le dimensioni sono scelte dall'utente e la matrice viene stampata ad ogni iterazione */
+        if(strcmp(argv[4], "test") == 0) {
+           is_test = true; 
+        }
+        row_size = atoi(argv[1]);
+        col_size = atoi(argv[2]);
+        generations = atoi(argv[3]);
+        break;    
+    case 1: /* configurazioni di default */
         row_size = DEF_ROWS;
         col_size = DEF_COLS;
-        iterations = DEF_ITERATION;
+        generations = DEF_ITERATION;
         break;
     default:
         printf("Error, check the number of arguments.\n");
@@ -84,57 +95,78 @@ MPI_Type_commit(&mat_row);
 #### Divisione del carico
 La matrice viene equamente divisa, per numero di righe, tra i processi. Nel caso di divisione non equa, i primi resto processi ricevono una riga in più.
 ```c
-/* ogni cella k memorizza il numero di righe assegnate al processo k */
-rows_for_proc = calloc(num_proc, sizeof(int));
-/* ogni cella k memorizza il displacement da applicare al processo k */
-displacement = calloc(num_proc, sizeof(int));
-/* divisione delle righe */
-int base = (int)row_size / num_proc;
-int rest = row_size % num_proc;
-/* righe già assegnate */
-int assigned = 0;
+/* ogni cella i memorizza il numero di righe assegnate al processo i-esimo */
+    rows_for_proc = calloc(num_proc, sizeof(int));
+    /* ogni cella i memorizza il displacement da applicare al processo i-esimo */
+    displ_for_proc = calloc(num_proc, sizeof(int));
+    
+    /* divisione delle righe */
+    int base = (int)row_size / num_proc;
+    int rest = row_size % num_proc;
+    /* righe già assegnate */
+    int assigned = 0;
 
-/* calcolo righe e displacement per ogni processo */
-for (int i = 0; i < num_proc; i++) {
-  displacement[i] = assigned;
-  /* nel caso di resto presente, i primi resto processi ricevono una riga in più*/
-  if (rest > 0) {
-    rows_for_proc[i] = base + 1;
-    rest--;
-  } else {
-    rows_for_proc[i] = base;
-  }
-  assigned += rows_for_proc[i];
-}
+    /* calcolo righe e displacement per ogni processo */
+    for (int i = 0; i < num_proc; i++) {
+        displ_for_proc[i] = assigned;
+        /* nel caso di resto presente, i primi resto processi ricevono una riga in più*/
+        if (rest > 0) {
+            rows_for_proc[i] = base + 1;
+            rest--;
+        } else {
+            rows_for_proc[i] = base;
+        }
+        assigned += rows_for_proc[i];
+    }
 ```
 
-Ogni processo alloca la sua porzione di righe, il cui numero è stato calcolato nella fase precedente:
+Ogni processo alloca la sua porzione di righe, il cui numero è stato calcolato nella fase precedente e le inizializza con valori casuali:
 ```c
-result_buff = calloc(rows_for_proc[rank] * col_size, sizeo(char));
+    process_buffer = calloc(rows_for_proc[rank] * col_size, sizeo(char));
+
+    srand(time(NULL) + rank);
+    for(int i = 0; i < rows_for_proc[rank] * col_size; i++) {
+        if (rand() % 2 == 0) {
+            process_buffer[i] = ALIVE;
+        } else {
+            process_buffer[i] = DEAD;
+        }
+    }  
 ```  
 
-Ogni processo inizializza le celle delle sue righe (ALIVE o DEAD) in modo casuale e le invia al processo MASTER. La routine `MPI_Gatherv` raccoglie i dati da tutti i processi e li concatena nel buffer del processo MASTER.
+Ogni processo calcola il rank del processo che lo precede e lo succede nell'anello:
 ```c
-MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
+    prev_rank = (rank - 1 + num_proc) % num_proc;
+    next_rank = (rank + 1) % num_proc;
 ```
 
 Ogni processo alloca i propri buffer:
-  1. un buffer per la ricezione della sottomatrice
-  2. un buffer per memorizzare la nuova matrice a seguito del calcolo della nuova generazione
+  1. un buffer per memorizzare il calcolo della nuova generazione delle righe
+  2. un buffer per effettuare lo scambio sopra spiegato
   3. un buffer per ricevere la riga precedente alle proprie
   4. un buffer per ricevere la riga successiva alle proprie
 ```c
-recv_buff = calloc(rows_for_proc[rank] * col_size, sizeof(char));
-result_buff = calloc(rows_for_proc[rank] * col_size, sizeof(char));
-prev_row = calloc(col_size, sizeof(char));
-next_row = calloc(col_size, sizeof(char));
+    result_buffer = calloc(rows_for_proc[rank] * col_size, sizeof(char));
+    char *temp; /* per lo scambio di puntatori */
+    prev_row = calloc(col_size, sizeof(char));
+    next_row = calloc(col_size, sizeof(char));
 ```
 #### Calcolo delle generazioni
-Le seguenti porzioni di codice vengono eseguite per un numero I di iterazioni scelte dall'utente:
+Le seguenti porzioni di codice vengono eseguite per un numero di iterazioni scelte dall'utente:
 
-La matrice, precedentemente inizializzata, viene distribuita a tutti i processi con la routine `MPI_ScatterV`.
+Prima dell'effettivo calcolo, vengono controllati i puntatori, per la prima iterazione non viene fatto alcuno scambio. Dalla seconda in poi `process_buffer` e `result_buffer` vengono scambiati. Lo scambio permette di avere sempre a disposizione la generazione precedente per il calcolo della generazione successiva.
 ```c
-MPI_Scatterv(matrix, rows_for_proc, displacement, mat_row, recv_buff, rows_for_proc[rank], mat_row, MASTER, MPI_COMM_WORLD); 
+    if(gen > 0) {
+        if( gen%2 == 0) {
+            temp = result_buffer;
+            result_buffer = process_buffer;
+            process_buffer = temp;
+        } else {
+            temp = process_buffer;
+            process_buffer = result_buffer;
+            result_buffer = temp;
+        }
+    }
 ```
 
 Ogni processo, in modalità asincrona, attraverso le routine `MPI_Isend` e `MPI_Irecv`:
@@ -143,19 +175,28 @@ Ogni processo, in modalità asincrona, attraverso le routine `MPI_Isend` e `MPI_
   3. invia al suo successore la sua ultima riga
   4. attende la riga successiva alle sue 
 ```c
-MPI_Isend(recv_buff, 1, mat_row, prev, TAG_NEXT, MPI_COMM_WORLD, &send_request);
-MPI_Irecv(prev_row, 1, mat_row, prev, TAG_PREV, MPI_COMM_WORLD, &prev_request);
-MPI_Isend(recv_buff + (col_size * (sub_rows_size - 1)), 1, mat_row, next, TAG_PREV, MPI_COMM_WORLD, &send_request);
-MPI_Irecv(next_row, 1, mat_row, next, TAG_NEXT, MPI_COMM_WORLD, &next_request);  
+    /* rank invia la sua prima riga al processo precedente */
+    MPI_Isend(process_buffer, 1, row_data, prev_rank, TAG_PREV, MPI_COMM_WORLD, &send_request);
+    MPI_Request_free(&send_request);
+
+    /* rank riceve la riga precedente dal suo predecessore */
+    MPI_Irecv(prev_row, 1, row_data, prev_rank, TAG_NEXT, MPI_COMM_WORLD, &prev_request);
+
+    /* rank invia la sua ultima riga al suo successore */
+    MPI_Isend(process_buffer + (col_size * (rows_for_proc[rank] - 1)), 1, row_data, next_rank, TAG_NEXT, MPI_COMM_WORLD, &send_request);
+    MPI_Request_free(&send_request);
+
+    /* rank riceve la riga successiva dal suo successore */
+    MPI_Irecv(next_row, 1, row_data, next_rank, TAG_PREV, MPI_COMM_WORLD, &next_request);       
 ```
 
 Ogni processo calcola il valore delle celle che non necessitano dei valori posseduti da altri processi. Vengono pertanto escluse la prima riga e l'ultima. Per ogni cella target vengono calcolati i vicini ALIVE nell'intorno (le 8 celle che lo racchiudono). Il dato appena calcolato viene poi utilizzato per calcolare il nuovo valore della cella. 
 ```c
-void compute(char* origin_buff, char* result_buff, int row_size,  int col_size) {
+void compute(char* origin_buff, char* result_buffer, int row_size,  int col_size) {
     for (int i = 1; i < row_size - 1; i++) {
             for (int j = 0; j < col_size; j++) {
 
-                /* memorizza i vicini vivi nell'intorno della cella target */
+                /* memorizza i vicini vivi nell'intorno della cella target (i,j) */
                 int live_count = 0;
                 for (int row = i - 1; row < i + 2; row++) {
                     for (int col = j - 1; col < j + 2; col++) {
@@ -167,10 +208,11 @@ void compute(char* origin_buff, char* result_buff, int row_size,  int col_size) 
                         }       
                     }
                 }
+                
                 /* decide lo stato della cella per la generazione successiva */
-                life(origin_buff, result_buff, i * col_size + j, live_count);
+                life(origin_buff, result_buffer, i * col_size + j, live_count);
             }
-        }
+    }
 }
 ```
 
@@ -244,50 +286,9 @@ void compute_next(char* origin_buff, char* result_buff, char* next_row, int row_
     }
 }
 ```
-
-Le righe, con i valori aggiornati per la prossima generazione, vengono re-inviate al processo MASTER e concatenate nel buffer con la routine `MPI_Gatherv`:
-```c
-MPI_Gatherv(result_buff, rows_for_proc[rank], mat_row, matrix, rows_for_proc, displacement, mat_row, MASTER, MPI_COMM_WORLD);
-```
+Completato il calcolo per ogni cella, l'algoritmo ripete i passaggi sopra per I volte.
 
 ## Compilazione ed esecuzione 
-Sono presenti due versioni dell'algoritmo, una versione sequenziale ed una parallela, entrambe utilizzano OpenMPI. La versione sequenziale utilizza OpenMPI solo affinchè il calcolo dei tempi sia svolto nel medesimo modo.
-
-<details>
-  <summary><b>GoL versione sequenziale</b></summary>
-
-Per la compilazione eseguire il seguente comando da terminale:  
-
-```c
-mpicc -o gol sequential_gol.c
-```
-Per l'esecuzione esistono due varianti:
-
-La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come ALIVE conterrà il simbolo *O* mentre se indicata come DEAD conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
-
-Pulsar pattern             |  Glidergun pattern
-:-------------------------:|:-------------------------:
-![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
-
-Oltre al nome del file va specificato il numero di iterazioni da eseguire:
-```c
-mpirun -n 1 gol pulsar 10
-```  
-La seconda variante permette di eseguire l'algoritmo specificando 4 argomenti:
-- numero di righe
-- numero di colonne
-- numero di iterazioni  
-
-N.B. La matrice di partenza verrà generata in maniera casuale.
-```c
-mpirun -n 1 gol 100 200 8
-```  
-  
-</details>
-
-<details>
-    <summary><b>GoL versione parallela</b></summary>
-
 Per la compilazione eseguire il seguente comando da terminale:  
 
 ```c
@@ -295,13 +296,13 @@ mpicc -o mpigol mpi_gol.c
 ```  
 Per l'esecuzione esistono 3 varianti:
 
-La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come viva conterrà il simbolo *O* mentre se indicata come morta conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
+La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come ALIVE conterrà il simbolo *O* mentre se indicata come DEAD conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
 
 Pulsar pattern             |  Glidergun pattern
 :-------------------------:|:-------------------------:
 ![pulsar](images/pulsar.png)  |  ![glidergun](images/glidergun.png) 
 
-Oltre al nome del file va specificato il numero di iterazioni da eseguire e il numero di processi da utilizzare:
+Oltre al nome del file senza estensione, va specificato il numero di iterazioni da eseguire e il numero di processi da utilizzare, come nell'esempio:
 ```c
 mpirun -n 5 mpigol pulsar 10
 ```  
@@ -314,13 +315,16 @@ La seconda variante permette di eseguire l'algoritmo specificando 4 argomenti:
 N.B. La matrice di partenza verrà generata in maniera casuale.
 ```c
 mpirun -n 5 mpigol 100 200 8
-``` 
-La terza variante non richiede alcun argomento aggiuntivo oltre al numero di processori da utilizzare ed eseguirà l'algoritmo utilizzando i parametri di default (una matrice 240x160 su 6 iterazioni), riempendo la matrice con valori casuali.
+```
+Nel caso si voglia mostrare a video la matrice di gioco dopo ogni iterazione, va aggiunta la flag *test* come nell'esempio di seguito:
+```c
+mpirun -n 5 mpigol 10 20 8 test
+```
+
+La terza variante non richiede alcun argomento aggiuntivo oltre al numero di processori da utilizzare ed eseguirà l'algoritmo utilizzando i parametri di default (una matrice 240x160 su 10 iterazioni), riempendo la matrice con valori casuali.
 ```c
 mpirun -n 5 mpigol
 ```  
-
-</details>
 
 ## Correttezza
 Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern noti, *pulsar* e *glidergun*. 
@@ -332,25 +336,33 @@ Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern 
 Il risultato è stato confrontato con una simulazione testabile [qui](https://conwaylife.com/). Il programma è stato eseguito per un numero fisso di iterazioni pari a 10 e variando il numero di processi utilizzati. Di seguito i risultati:
 
 
-
 **Risultati Pattern GliderGun**
-| ver. sequenziale | 2 processi | 4 processi | 8 processi |
-| --- | --- | --- | --- |
-| <img src="images/resultsGG/res-seq.png" height="200" /> | <img src="images/resultsGG/res-2.png" height="200" /> | <img src="images/resultsGG/res-4.png" height="200" /> | <img src="images/resultsGG/res-8.png" height="200" /> |
+| ver. sequenziale | 2 processi |
+| --- | --- |
+| <img src="images/resultsGG/res-seq.png" height="200" /> | <img src="images/resultsGG/res-2.png" height="200" /> |
+
+| 4 processi | 8 processi |
+| --- | --- |
+| <img src="images/resultsGG/res-4.png" height="200" /> | <img src="images/resultsGG/res-8.png" height="200" /> |
 
 **Risultati Pattern Pulsar**
-| ver. sequenziale | 2 processi | 4 processi | 8 processi |
-| --- | --- | --- | --- |
-| <img src="images/resultsPS/res-seq.png" height="200" /> | <img src="images/resultsPS/res-2.png" height="200" /> | <img src="images/resultsPS/res-4.png" height="200" /> | <img src="images/resultsPS/res-8.png" height="200" /> |
+| ver. sequenziale | 2 processi |
+| --- | --- |
+| <img src="images/resultsPS/res-seq.png" height="200" /> | <img src="images/resultsPS/res-2.png" height="200" /> |
 
-Tutti i test, dopo le 10 iterazioni prefissate, restituiscono lo stesso risultato confermando la correttezza della soluzione indipendentemente dal numero di processi utilizzati. 
+| 4 processi | 8 processi |
+| --- | --- |
+ <img src="images/resultsPS/res-4.png" height="200" /> | <img src="images/resultsPS/res-8.png" height="200" /> |
+
+Tutti i test, dopo le 10 iterazioni prefissate, restituiscono lo stesso risultato confermando la correttezza della soluzione indipendentemente dal numero di processi utilizzati.
 
 ## Analisi performance
-Le prestazioni sono state valutate su un cluster GoogleCloud di 4 nodi e2-standard-4 con 4vCPU (16 vCPU in totale) in termini di scalabilità forte e di scalabilità debole. Per i test sono state utilizzate matrici quadrate per una questione di semplicità.
+Le prestazioni sono state valutate su un cluster GoogleCloud di 4 nodi e2-standard-4 con 4vCPU (16 vCPU in totale) in termini di scalabilità forte e di scalabilità debole. Per i test sono state utilizzate matrici quadrate per una questione di semplicità. Sono stati eseguite due fasi di test: la prima fase di misurazione è stata svolta su una prima versione dell'algoritmo che utilizzava routine `MPI_Scatterv` e  `MPI_Gatherv` per aggregare la matrice e ridistribuirla ad ogni iterazione; la seconda versione è più performante in quanto ogni processo gestisce in maniera indipendente la sua porzione di matrice.
 
 ## Scalabilità forte
 La scalabilità forte riguarda lo speedup per una dimensione fissa del problema rispetto al numero di processori. Per il test le dimensioni della matrice di partenza sono state fissate a 4000 righe e 4000 colonne e a variare sarà il numero di processori utilizzati (da 1 a 16). Il numero di iterazioni è stato fissato a 50. I tempi di esecuzione sono stati calcolati su una media di 3 esecuzioni. Di seguito i risultati in formato tabellare:
 
+### Versione 1
 | # Processori | Dim. matrice (R=C) | Tempi di esecuzione (ms) | Speedup |
 | --- | --- | --- | --- |
 | 1 | 4000 | 64,89 | // |
@@ -369,6 +381,26 @@ La scalabilità forte riguarda lo speedup per una dimensione fissa del problema 
 | 14 | 4000 | 8,15 | 7,95 |
 | 15 | 4000 | 7,59 | 8,54 |
 | 16 | 4000 | 7,39 | 8,77 |
+
+### Versione 2
+| # Processori | Dim. matrice (R=C) | Tempi di esecuzione (ms) | Speedup |
+| --- | --- | --- | --- |
+| 1 | 4000 |  | // |
+| 2 | 4000 |  |  |
+| 3 | 4000 |  |  |
+| 4 | 4000 |  |  |
+| 5 | 4000 |  |  |
+| 6 | 4000 |  |  |
+| 7 | 4000 |  |  | 
+| 8 | 4000 |  |  |
+| 9 | 4000 |  |  | 
+| 10 | 4000 |  |  |
+| 11 | 4000 |  |  |
+| 12 | 4000 |  |  |
+| 13 | 4000 |  |  |
+| 14 | 4000 |  |  |
+| 15 | 4000 |  |  |
+| 16 | 4000 |  |  |
 
 Di seguito invece il grafico che mostra il rapporto fra i tempi di esecuzione (ordinata) e il numero di processori utilizzati (ascissa). Inizialmente il tempo di esecuzione scende vertiginosamente fino a stabilizzarsi dagli 8 processori in poi.
 
