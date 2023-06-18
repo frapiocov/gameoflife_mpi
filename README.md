@@ -87,7 +87,7 @@ switch (argc) {
 ```  
 
 #### Nuovo tipo di dato MPI
-Viene creato un nuovo tipo di dato MPI replicando `MPI_CHAR` col_size  volte in posizioni contigue (col_size indica il numero di colonne della matrice). La contiguità permette di migliorare le prestazioni nel passaggio di dati di grandi dimensioni.
+Viene creato un nuovo tipo di dato MPI replicando `MPI_CHAR` col_size  volte in posizioni contigue (col_size indica il numero di colonne della matrice). La contiguità permette di gestire ogni riga come un unico elemento nel passaggio dei dati.
 ```c
 MPI_Type_contiguous(col_size, MPI_CHAR, &mat_row);
 MPI_Type_commit(&mat_row);
@@ -152,7 +152,7 @@ Ogni processo alloca i propri buffer:
     next_row = calloc(col_size, sizeof(char));
 ```
 #### Calcolo delle generazioni
-Le seguenti porzioni di codice vengono eseguite per un numero di iterazioni scelte dall'utente:
+Le seguenti porzioni di codice vengono eseguite per un numero X di iterazioni scelte dall'utente:
 
 Prima dell'effettivo calcolo, vengono controllati i puntatori, per la prima iterazione non viene fatto alcuno scambio. Dalla seconda in poi `process_buffer` e `result_buffer` vengono scambiati. Lo scambio permette di avere sempre a disposizione la generazione precedente per il calcolo della generazione successiva.
 ```c
@@ -236,7 +236,7 @@ int handle_index;
 MPI_Waitany(2, to_wait, &handle_index, &status);
 ```
 
-Una volta completate entrambe le richieste, vengono calcolati i valori delle celle mancanti utilizzando le righe di frontiera appena ricevute. La riga -1 identifica la riga precedente ricevuta dal processo precedente. Per raggiungere lo scopo basterà controllare la riga precedente e le prime due assegnate al processo corrente. Vengono calcolati i vicini ALIVE nell'intorno della cella target ed eseguito il calcolo per identificare il suo stato nella successiva generazione.
+Una volta completate entrambe le richieste, vengono calcolati i valori delle celle mancanti utilizzando le righe di frontiera appena ricevute. La riga -1 identifica la riga precedente ricevuta dal processo predecessore. Per raggiungere lo scopo basterà controllare la riga precedente e le prime due assegnate al processo corrente. Vengono calcolati i vicini ALIVE nell'intorno della cella target ed eseguito il calcolo per identificare il suo stato nella successiva generazione.
 ```c
 void compute_prev(char* origin_buff, char* result_buff, char* prev_row,  int col_size) {
     for (int j = 0; j < col_size; j++) {
@@ -261,7 +261,7 @@ void compute_prev(char* origin_buff, char* result_buff, char* prev_row,  int col
     }
 }
 ```
-Allo stesso modo vengono poi calcolati i valori delle righe superiori. La riga row_size identifica la riga successiva ricevuta dal processo successivo. Per raggiungere lo scopo basterà controllare le ultime due righe e quella successiva dapprima controllando i vicini ALIVE nell'intorno e poi eseguendo la funzione `life()`.
+Allo stesso modo vengono poi calcolati i valori delle righe superiori. La riga row_size identifica la riga successiva ricevuta dal processo successore. Per raggiungere lo scopo basterà controllare le ultime due righe e quella successiva dapprima controllando i vicini ALIVE nell'intorno e poi eseguendo la funzione `life()`.
 ```c
 void compute_next(char* origin_buff, char* result_buff, char* next_row, int row_size, int col_size) {
     for (int j = 0; j < col_size; j++) {
@@ -286,17 +286,17 @@ void compute_next(char* origin_buff, char* result_buff, char* next_row, int row_
     }
 }
 ```
-Completato il calcolo per ogni cella, l'algoritmo ripete i passaggi sopra per I volte.
+Completato il calcolo per ogni cella, l'algoritmo ripete i passaggi sopra per X volte.
 
 ## Compilazione ed esecuzione 
-Per la compilazione eseguire il seguente comando da terminale:  
+Per la compilare il programma eseguire il seguente comando da terminale:  
 
 ```c
-mpicc -o mpigol mpi_gol.c
+mpicc -o gol mpi_gol.c
 ```  
 Per l'esecuzione esistono 3 varianti:
 
-La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come ALIVE conterrà il simbolo *O* mentre se indicata come DEAD conterrà il simbolo *"."*; I seguenti sono due esempi di pattern:
+La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come ALIVE conterrà il simbolo *O* mentre se indicata come DEAD conterrà il simbolo *"."*. I seguenti sono due esempi di pattern:
 
 Pulsar pattern             |  Glidergun pattern
 :-------------------------:|:-------------------------:
@@ -304,7 +304,7 @@ Pulsar pattern             |  Glidergun pattern
 
 Oltre al nome del file senza estensione, va specificato il numero di iterazioni da eseguire e il numero di processi da utilizzare, come nell'esempio:
 ```c
-mpirun -n 5 mpigol pulsar 10
+mpirun -n 4 gol pulsar 10
 ```  
 La seconda variante permette di eseguire l'algoritmo specificando 4 argomenti:
 - numero di processori
@@ -314,16 +314,16 @@ La seconda variante permette di eseguire l'algoritmo specificando 4 argomenti:
 
 N.B. La matrice di partenza verrà generata in maniera casuale.
 ```c
-mpirun -n 5 mpigol 100 200 8
+mpirun -n 4 gol 100 200 8
 ```
 Nel caso si voglia mostrare a video la matrice di gioco dopo ogni iterazione, va aggiunta la flag *test* come nell'esempio di seguito:
 ```c
-mpirun -n 5 mpigol 10 20 8 test
+mpirun -n 4 gol 10 20 8 test
 ```
 
-La terza variante non richiede alcun argomento aggiuntivo oltre al numero di processori da utilizzare ed eseguirà l'algoritmo utilizzando i parametri di default (una matrice 240x160 su 10 iterazioni), riempendo la matrice con valori casuali.
+La terza variante non richiede alcun argomento aggiuntivo oltre al numero di processori da utilizzare ed eseguirà l'algoritmo settando i parametri di default (una matrice 240x160 su 10 iterazioni), riempendo la matrice con valori casuali.
 ```c
-mpirun -n 5 mpigol
+mpirun -n 4 mpigol
 ```  
 
 ## Correttezza
@@ -335,9 +335,8 @@ Per dimostrare la correttezza della soluzione sono stati utilizzati due pattern 
 
 Il risultato è stato confrontato con una simulazione testabile [qui](https://conwaylife.com/). Il programma è stato eseguito per un numero fisso di iterazioni pari a 10 e variando il numero di processi utilizzati. Di seguito i risultati:
 
-
 **Risultati Pattern GliderGun**
-| ver. sequenziale | 2 processi |
+| 1 processo | 2 processi |
 | --- | --- |
 | <img src="images/resultsGG/res-seq.png" height="200" /> | <img src="images/resultsGG/res-2.png" height="200" /> |
 
@@ -346,7 +345,7 @@ Il risultato è stato confrontato con una simulazione testabile [qui](https://co
 | <img src="images/resultsGG/res-4.png" height="200" /> | <img src="images/resultsGG/res-8.png" height="200" /> |
 
 **Risultati Pattern Pulsar**
-| ver. sequenziale | 2 processi |
+| 1 processo | 2 processi |
 | --- | --- |
 | <img src="images/resultsPS/res-seq.png" height="200" /> | <img src="images/resultsPS/res-2.png" height="200" /> |
 
@@ -363,38 +362,38 @@ Le prestazioni sono state valutate su un cluster GoogleCloud di 4 nodi e2-standa
 La scalabilità forte riguarda lo speedup per una dimensione fissa del problema rispetto al numero di processori. Per il test le dimensioni della matrice di partenza sono state fissate a 4000 righe e 4000 colonne e a variare sarà il numero di processori utilizzati (da 1 a 16). Il numero di iterazioni è stato fissato a 50. I tempi di esecuzione sono stati calcolati su una media di 3 esecuzioni. Di seguito i risultati in formato tabellare:
 
 ### Tabella Versione 1 & Versione 2
-| # Processori | Dim. matrice (R=C) | Tempi di esecuzione (ms) | Speedup |
-| --- | --- | --- | --- |
-| 1 | 4000 | 64,89 | // |
-| 2 | 4000 | 32,95 | 1,96 |
-| 3 | 4000 | 22,46 | 2,88 |
-| 4 | 4000 | 17,20 | 3,77 |
-| 5 | 4000 | 14,20 | 4,56 |
-| 6 | 4000 | 12,20 | 5,31 |
-| 7 | 4000 | 10,31 | 6,29 | 
-| 8 | 4000 | 9,46 | 6,85 |
-| 9 | 4000 | 12,27 | 5,28 | 
-| 10 | 4000 | 10,80 | 6,00 |
-| 11 | 4000 | 10,01 | 6,48 |
-| 12 | 4000 | 9,43 | 6,88 |
-| 13 | 4000 | 8,60 | 7,53 |
-| 14 | 4000 | 8,15 | 7,95 |
-| 15 | 4000 | 7,59 | 8,54 |
-| 16 | 4000 | 7,39 | 8,77 |
+| # Processori | Dim. matrice (R=C) | Tempi ver.1 (ms) | Speedup ver.1 | Tempi vers.2 (ms) | Speedup vers.2 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 4000 | 64,89 | // | 39,34 | // |
+| 2 | 4000 | 32,95 | 1,96 | 20,40 | 1,97 |
+| 3 | 4000 | 22,46 | 2,88 | 15,15 | 2,89 |
+| 4 | 4000 | 17,20 | 3,77 | 11,40 | 3,86 |
+| 5 | 4000 | 14,20 | 4,56 | 9,68 | 4,75 |
+| 6 | 4000 | 12,20 | 5,31 | 7,33 | 5,42 |
+| 7 | 4000 | 10,31 | 6,29 | 7,01 | 6,25 |
+| 8 | 4000 | 9,46 | 6,85 | 6,44 | 7,0 |
+| 9 | 4000 | 12,27 | 5,28 | 7,23 |	6,32 |
+| 10 | 4000 | 10,80 | 6,00 | 6,38 |	6,16 |
+| 11 | 4000 | 10,01 | 6,48 | 6,24 |	6,29 |
+| 12 | 4000 | 9,43 | 6,88 | 5,82 | 6,75 |
+| 13 | 4000 | 8,60 | 7,53 | 5,45 | 7,20 |
+| 14 | 4000 | 8,15 | 7,95 | 5,31 | 7,40 |
+| 15 | 4000 | 7,59 | 8,54 | 4,85 | 8,10 |
+| 16 | 4000 | 7,39 | 8,77 | 4,09 | 9,77 |
 
-Di seguito invece il grafico che mostra il rapporto fra i tempi di esecuzione (ordinata) e il numero di processori utilizzati (ascissa). Inizialmente il tempo di esecuzione scende vertiginosamente fino a stabilizzarsi dagli 8 processori in poi.
+Di seguito invece il grafico che mostra il rapporto fra i tempi di esecuzione (ordinata) e il numero di processori utilizzati (ascissa). Le due versioni dell'algoritmo sono state confrontate, si evince subito che la versione 2 risulta essere più veloce. Inizialmente il tempo di esecuzione scende vertiginosamente fino a stabilizzarsi dagli 8 processori in poi, la differenza tra i due tende ad essere costante.
 
 <img src="images/strong_scal.png" height="400" />
 
-Nel grafico seguente invece viene mostrato come varia lo speedup (ordinata) al crescere dei processori (ascissa) utilizzati. Inizialmente lo speedup cresce in maniera ottimale fino ad un anomalo calo con 9 processori per poi ri-stabilizzarsi con una crescita più lenta.
+Nel grafico sotto invece viene mostrato come varia lo speedup (ordinata) al crescere dei processori (ascissa) utilizzati per le due versioni. Inizialmente lo speedup cresce in maniera ottimale fino ad un anomalo calo su 9 processori per poi ri-stabilizzarsi con una crescita più lenta. Lo speedup delle due versioni cresce in maniera quasi lineare e sembra equivalersi tranne per alcuni picchi.
 
 <img src="images/speedup.png" height="400" />
 
 ## Scalabilità debole
-Lo scaling debole riguarda lo speedup per un problema di dimensioni scalari rispetto al numero di processori. Il numero di processori è stato fissato a 8 e il numero di iterazioni a 50. A variare sono le dimensioni della matrice di partenza. Dopo ogni prova aumentano il numero di righe e colonne gestite dal singolo processo (aggiunte 10 righe e 10 colonne).
+Lo scaling debole riguarda lo speedup per un problema di dimensioni scalari rispetto al numero di processori. Il numero di processori è stato fissato a 8 e il numero di iterazioni a 50. A variare sono le dimensioni della matrice di partenza. Dopo ogni test aumenta il numero di righe e colonne gestite dal singolo processo (aggiunte 10 righe e 10 colonne).
 Di seguito i risultati sotto forma di tabella:
 
-| # Processori | Dim. matrice (R=C) | Tempi di esecuzione VERS.1 (ms) | Tempi di esecuzione VERS.2 (ms) | 
+| # Processori | Dim. matrice (R=C) | Tempi ver.1 (ms) | Tempi ver.2 (ms) | 
 | --- | --- | --- | --- |
 | 8 | 160 | 0.6420 | 0.0090 |
 | 8 | 320 | 0.1048 | 0.0417 |
@@ -409,13 +408,15 @@ Di seguito i risultati sotto forma di tabella:
 | 8 | 1040 | 0.7797 | 0.4021 |
 | 8 | 1280 | 1.1082 | 0.6445 |
 
-Il grafico invece mostra il rapporto tra il tempo di esecuzione (ordinata) e la dimensione della matrice quadrata (ascissa):
+Il grafico mostra il rapporto tra il tempo di esecuzione (ordinata) e la dimensione della matrice quadrata (ascissa). Le due versioni mostrano entrambe una crescita esponenziale, si nota che la seconda versione è più veloce della prima:
 
 <img src="images/weak_scal.png" height="400" />
 
 ## Conclusioni
-Come mostrato nei risultati, la soluzione proposta scala discretamente bene. I processi lavorano parallelamente dalla prima fase dell'algoritmo, il riempimento della matrice, fino alla fase di calcolo della generazione successiva. Il processo MASTER si occupa di dividere la matrice e di riunire i risultati di ogni processo ma partecipa anch'esso alla computazione.
+Come mostrato nei risultati, la soluzione proposta scala discretamente bene. I processi lavorano parallelamente e in maniera indipendente dalla prima fase dell'algoritmo, il riempimento della matrice, fino alla fase di calcolo della generazione successiva.
 
 Per quanto riguarda la scalabilità forte, i risultati ottenuti sono inizialmente ottimi, i tempi diminuiscono, quasi dimezzano e lo speedup tende a quello ideale. Dall'utilizzo di otto processori in poi i tempi si stabilizzano e lo speedup migliora meno velocemente. Una stabilizzazione che si può imputare anche alla dimensione dell'input, non abbastanza grande per 8 processi, o all'overhead di comunicazione. Sulla base di alcuni test effettuati in locale con la medesima taglia del problema, è possibile affermare che l'overhead di comunicazione causato dall'utilizzo di un cluster remoto è impattante sui tempi di computazione, è quindi fondamentale tenere in considerazione questo particolare nella valutazione delle performance.
 
 In termini di scalabilità debole, il programma ha ottenuto le performance attese. Per natura dell'algoritmo la computazione sfrutta molto le risorse in termini di CPU, vengono infatti analizzate indipendentemente tutte le celle della matrice e per ogni cella l'intorno. L'aumento della taglia della matrice fa diminuire di conseguenza le performance.
+
+La prima versione, con l'utilizzo di `MPI_Scatterv` e `MPI_Gatherv` con cui il  processo MASTER raccoglieva i dati e li ridistribuiva ad ogni iterazione, risulta meno efficiente e più lenta della seconda versione dove ogni processo lavora autonomamente comunicando con gli altri processi solo per lo scambio di righe necessarie. Il risultato del confronto si evince sia dalle tabelle che dai grafici sopra.  
