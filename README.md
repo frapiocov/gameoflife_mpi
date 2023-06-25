@@ -12,7 +12,7 @@ Implementazione del modello matematico *Game of life* (John Conway - 1970) con l
 
 ## Soluzione proposta
 Game of life è un modello matematico creato da John Conway nel 1970.
-La seguente è un'implentazione in C con l'utilizzo di OpenMPI. La soluzione proposta si può sintetizzare nei seguenti punti:
+La seguente è un'implentazione in C con l'utilizzo di MPI ed OpenMPI. La soluzione proposta si può sintetizzare nei seguenti punti:
 
 - La matrice viene allocata in porzioni di memoria contigue e quindi fisicamente è un array ma viene trattata logicamente come una matrice.
 
@@ -25,7 +25,7 @@ La seguente è un'implentazione in C con l'utilizzo di OpenMPI. La soluzione pro
 - Vengono utilizzati due puntatori: `process_buffer` e `result_buffer`. Il primo punta alla porzione di righe inizializzata dal processo mentre il secondo punta alla porzione di memoria che conterrà i nuovi valori dopo l'esecuzione di GameOfLife. Prima di ogni iterazione, i due puntatori vengono scambiati per memorizzare i valori di partenza della successiva generazione.  
 
 - Per un numero di volte pari al numero di generazioni scelto, ogni processo esegue le seguenti operazioni:
-    - calcola il rank del proprio successore e predecessore nell'anello.
+    - controlla, secondo la generazione corrente, quale spazio di memoria viene utilizzato per il calcolo e quale per memorizzare i dati
     - invia in modalità asincrona (`MPI_Isend`) la sua prima riga al predecessore e la sua ultima riga al successore.
     - si prepara a ricevere in modalità asincrona (`MPI_Irecv`) la riga di bordo superiore dal suo predecessore e la riga di bordo inferiore dal suo successore.
     - mentre attende le righe di bordo, esegue l'algoritmo di GameofLife nelle zone della matrice in cui gli altri processi non sono coinvolti (essenzialmente tutte le righe escluse la prima e l'ultima).
@@ -296,7 +296,7 @@ mpicc -o gol mpi_gol.c
 ```  
 Per l'esecuzione esistono 3 varianti:
 
-La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come ALIVE conterrà il simbolo *O* mentre se indicata come DEAD conterrà il simbolo *"."*. I seguenti sono due esempi di pattern:
+La prima variante permette di inizializzare la matrice seed con un pattern memorizzato su file. Il file pattern va inserito in formato plain text (.txt) nella directory *patterns/*. Una cella della matrice indicata come ALIVE conterrà il simbolo *''O''* mentre se indicata come DEAD conterrà il simbolo *''.''*. I seguenti sono due esempi di pattern:
 
 Pulsar pattern             |  Glidergun pattern
 :-------------------------:|:-------------------------:

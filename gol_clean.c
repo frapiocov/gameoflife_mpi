@@ -84,7 +84,7 @@ void compute(char* origin_buff, char* result_buffer, int row_size,  int col_size
 * @brief Esegue la computazione utilizzando le celle della riga precedente a quelle date
 * 
 * Viene calcolato prima il numero di vicini vivi nell'intorno della cella target
-* e successivamente deciso lo stato della cella per la generazione successiva.
+* e successivamente deciso lo stato  per la generazione successiva.
 * Le operazioni sono eseguite per ogni cella.
 *
 * @param origin_buff buffer da cui prendere i dati
@@ -125,7 +125,7 @@ void compute_prev(char* origin_buff, char* result_buffer, char* prev_row,  int c
 * @brief Esegue la computazione utilizzando le celle della riga successiva a quelle date
 * 
 * Viene calcolato prima il numero di vicini vivi nell'intorno della cella target
-* e successivamente deciso lo stato della cella per la generazione successiva.
+* e successivamente deciso lo stato per la generazione successiva.
 * Le operazioni sono eseguite per ogni cella.
 *
 * @param origin_buff buffer da cui prendere i dati
@@ -168,8 +168,8 @@ int main(int argc, char **argv)
         row_size,       /* righe matrice */
         col_size,       /* colonne matrice */
         generations, /* numero di generazioni */
-        prev_rank,       /* rank del processo precedente al corrente */
-        next_rank;       /* rank del processo successivo al corrente */
+        prev_rank,       /* rank del processo predecessore */
+        next_rank;       /* rank del processo successore */
     
     double start_time, end_time; /* per la misurazione dei tempi */
     
@@ -233,7 +233,6 @@ int main(int argc, char **argv)
     }
 
     if(rank == MASTER) {    
-        /* nel caso di file presente, solo master inizializza la matrice */
         start_time = MPI_Wtime();
         printf("Settings: generations %d \trows %d \tcolumns %d\n", generations, row_size, col_size);
     }
@@ -241,7 +240,7 @@ int main(int argc, char **argv)
     /* ogni processo alloca la sua porzione di righe */
     process_buffer = calloc(rows_for_proc[rank] * col_size, sizeof(char));
     
-    /* se non è presente file, ogni processo inizializza la sua porzione con valori casuali */
+    /* ogni processo inizializza la sua porzione con valori casuali */
     srand(time(NULL) + rank);
     for(int i = 0; i < rows_for_proc[rank] * col_size; i++) {
         if (rand() % 2 == 0) {
