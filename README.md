@@ -1,6 +1,20 @@
-# Game Of Life - MPI  🕹️🧬
-Implementazione del modello matematico *Game of life* (John Conway - 1970) con linguaggio C e OpenMPI.
-
+<div align="center">
+  <h1>
+    <br/>
+    🕹️
+    <br />
+    Game Of Life with MPI
+    <br />
+  </h1>
+  <sup>
+    <br />
+    <h3>
+    Implementazione del modello matematico *Game of life* (John Conway - 1970) con linguaggio C e OpenMPI.
+    </h3>
+    </em>
+    <br />
+</sup>
+</div>
 ----
 🎓 Università degli Studi di Salerno  
 💻 Dipartimento di Informatica  
